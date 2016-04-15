@@ -1,0 +1,14 @@
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Makefile
+cmake_install.cmake
+install_manifest.txt
+.cproject
+.project
+.settings
+*.swp
+main
+src/submission.cpp
+src/submission.o
+*.pyc
