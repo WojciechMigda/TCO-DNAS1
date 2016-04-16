@@ -354,6 +354,8 @@ int main(int argc, char **argv)
 
         std::cout << results.front() << std::endl;
 
+        std::cout << "[main] calculating score" << std::endl;
+
         const std::string minisam_path = input_prefix + "minisam";
         const double SCORE = score(results, std::get<2>(test_config[test_type]), minisam_path);
 
