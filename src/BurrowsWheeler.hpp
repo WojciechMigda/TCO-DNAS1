@@ -96,6 +96,17 @@ constexpr char base_by_ix(const std::size_t ix)
 }
 
 
+constexpr char nucleobase_by_ix(const std::size_t ix)
+{
+    return ((
+        ((uint32_t)'T' << 24) |
+        ((uint32_t)'G' << 16) |
+        ((uint32_t)'C' << 8) |
+        ((uint32_t)'A' << 0)
+        ) >> (ix * 8)) & 0xFF;
+}
+
+
 constexpr std::size_t ix_by_base(const char base)
 {
     return
@@ -106,6 +117,16 @@ constexpr std::size_t ix_by_base(const char base)
                (1ULL << ('C' - 'A')) |
                (2ULL << ('G' - 'A')) |
                (3ULL << ('T' - 'A'))) >> (base - 'A')) & 0x3) + 1;
+}
+
+
+constexpr std::size_t ix_by_nucleobase(const char base)
+{
+    return
+        ((((0ULL << ('A' - 'A')) |
+            (1ULL << ('C' - 'A')) |
+            (2ULL << ('G' - 'A')) |
+            (3ULL << ('T' - 'A'))) >> (base - 'A')) & 0x3);
 }
 
 
