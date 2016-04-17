@@ -31,6 +31,8 @@
 #include <cstdlib>
 #include <iterator>
 #include <cstring>
+#include <memory>
+#include <utility>
 
 namespace BW
 {
@@ -76,12 +78,51 @@ SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_ar
     return last_col;
 }
 
+typedef uint32_t count_type;
+
+struct Count
+{
+    const std::size_t m_skip;
+    const std::vector<std::vector<count_type>> m_counts;
+
+    template <typename SeqT>
+    count_type value(
+        const std::size_t base_ix,
+        const std::size_t position,
+        const SeqT & last_column) const
+    {
+        if (position == 0)
+        {
+            return 0;
+        }
+
+        const auto remaining = position % m_skip;
+        const auto mod_pos = position - remaining;
+        const auto mod_count = m_counts[base_ix][mod_pos / m_skip];
+        const typename SeqT::value_type base_dict[] = {'$', 'A', 'C', 'G', 'T'}; // TODO uint64 shift&mask
+        const auto base = base_dict[base_ix];
+
+        const auto real_count =
+            std::accumulate(
+                std::next(last_column.cbegin(), mod_pos),
+                std::next(last_column.cbegin(), position),
+                mod_count,
+                [&base](count_type acc, typename SeqT::value_type item)
+                {
+                    return acc + (item == base);
+                }
+            );
+
+        return real_count;
+    }
+};
+
 
 template <typename SeqT>
-std::vector<std::vector<uint32_t>> count(const SeqT & last_column, const std::size_t SKIP = 100)
+Count count(const SeqT & last_column, const std::size_t SKIP = 4)
 {
-    std::vector<std::vector<uint32_t>> result(5);
-    std::vector<uint32_t> stat(5);
+    std::vector<std::vector<count_type>> result(5);
+    std::vector<count_type> stat(5);
 
     for (auto & vec : result)
     {
@@ -108,16 +149,7 @@ std::vector<std::vector<uint32_t>> count(const SeqT & last_column, const std::si
         }
     }
 
-//    for (const auto item : last_column)
-//    {
-//        result[0].push_back(result[0].back() + (item == '$'));
-//        result[1].push_back(result[1].back() + (item == 'A'));
-//        result[2].push_back(result[2].back() + (item == 'C'));
-//        result[3].push_back(result[3].back() + (item == 'G'));
-//        result[4].push_back(result[4].back() + (item == 'T'));
-//    }
-
-    return result;
+    return Count{SKIP, result};
 }
 
 
