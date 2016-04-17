@@ -113,6 +113,8 @@ last col    T  $  T  C  A  G  A  T  T  C  A  T  C
 
 count($) 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 count(A) 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3
+count(C) 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 3
+count(G) 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1
 count(T) 0, 1, 1, 2, 2, 2, 2, 2, 3, 4, 4, 4, 5, 5
 
 first occ   {u'A': 1, u'C': 4, u'$': 0, u'G': 7, u'T': 8}
@@ -131,6 +133,7 @@ first occ   {u'A': 1, u'C': 4, u'$': 0, u'G': 7, u'T': 8}
             {
                 foo[ix] = count3.value(4, ix, last_col);
             }
+            const auto first_occ = BW::first_occurences(count3, last_col);
 //            const auto full_suffix_array = BW::full_suffix_array(subchroma);
             ;
             // clear it prior to collecting another one

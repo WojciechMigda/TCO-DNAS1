@@ -37,6 +37,7 @@
 namespace BW
 {
 
+
 template <typename SeqT>
 std::vector<uint32_t>
 full_suffix_array(const SeqT & text)
@@ -118,8 +119,6 @@ struct Count
             return mod_count;
         }
 
-//        const typename SeqT::value_type base_dict[] = {'$', 'A', 'C', 'G', 'T'}; // TODO uint64 shift&mask
-//        const auto base = base_dict[base_ix];
         const auto base = base_by_ix(base_ix);
 
         const auto real_count =
@@ -157,11 +156,6 @@ Count count(const SeqT & last_column, const std::size_t SKIP = 4)
         {
             stat[ix] += (item == base_by_ix(ix));
         }
-//        stat[0] += (item == '$');
-//        stat[1] += (item == 'A');
-//        stat[2] += (item == 'C');
-//        stat[3] += (item == 'G');
-//        stat[4] += (item == 'T');
 
         if (ix % SKIP == (SKIP - 1))
         {
@@ -169,11 +163,6 @@ Count count(const SeqT & last_column, const std::size_t SKIP = 4)
             {
                 result[ix].push_back(stat[ix]);
             }
-//            result[0].push_back(stat[0]);
-//            result[1].push_back(stat[1]);
-//            result[2].push_back(stat[2]);
-//            result[3].push_back(stat[3]);
-//            result[4].push_back(stat[4]);
         }
     }
 
@@ -186,6 +175,12 @@ std::vector<std::size_t>
 first_occurences(const Count & count, const SeqT & last_column)
 {
     std::vector<std::size_t> first_occ(5);
+
+    first_occ[0] = 0; // $
+    first_occ[1] = 1; // A
+    first_occ[2] = count.value(1, last_column.size(), last_column) + 1;            // C
+    first_occ[3] = count.value(2, last_column.size(), last_column) + first_occ[2]; // G
+    first_occ[4] = count.value(3, last_column.size(), last_column) + first_occ[3]; // T
 
     return first_occ;
 }
