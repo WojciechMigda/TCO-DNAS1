@@ -33,6 +33,7 @@
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <unordered_map>
 
 namespace BW
 {
@@ -89,6 +90,19 @@ constexpr char base_by_ix(const std::size_t ix)
         ((uint64_t)'A' << 8) |
         ((uint64_t)'$' << 0)
         ) >> (ix * 8)) & 0xFF;
+}
+
+
+constexpr std::size_t ix_by_base(const char base)
+{
+    return
+        base == '$' ?
+            0
+            :
+            ((((0ULL << ('A' - 'A')) |
+               (1ULL << ('C' - 'A')) |
+               (2ULL << ('G' - 'A')) |
+               (3ULL << ('T' - 'A'))) >> (base - 'A')) & 0x3) + 1;
 }
 
 
@@ -183,6 +197,51 @@ first_occurences(const Count & count, const SeqT & last_column)
     first_occ[4] = count.value(3, last_column.size(), last_column) + first_occ[3]; // T
 
     return first_occ;
+}
+
+
+struct PartialSuffixArray
+{
+    const std::size_t m_skip;
+    const std::unordered_map<uint32_t, uint32_t> m_sufarr;
+
+    template <typename SeqT>
+    uint32_t value(
+        uint32_t ix,
+        const SeqT & last_column,
+        const Count & count,
+        const std::vector<std::size_t> & first_occurrences) const
+    {
+        std::size_t backtrack{0};
+
+        while (m_sufarr.count(ix) == 0)
+        {
+            const auto pred_base = last_column[ix];
+            const auto base_ix = ix_by_base(pred_base);
+            const auto base_ord = count.value(base_ix, ix, last_column);
+            ix = first_occurrences[base_ix] + base_ord;
+            ++backtrack;
+        }
+
+        return (m_sufarr.at(ix) + backtrack) % last_column.size();
+    }
+};
+
+PartialSuffixArray
+partial_suffix_array(const std::vector<uint32_t> & full_suffix_array, const std::size_t SKIP = 4)
+{
+    if (full_suffix_array.size() == 0)
+    {
+        return PartialSuffixArray{SKIP, {}};
+    }
+
+    std::unordered_map<uint32_t, uint32_t> partial;
+    for (std::size_t ix{0}; ix < full_suffix_array.size(); ix += SKIP)
+    {
+        partial[ix] = full_suffix_array[ix];
+    }
+
+    return PartialSuffixArray{SKIP, partial};
 }
 
 

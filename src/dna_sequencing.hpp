@@ -118,6 +118,15 @@ count(G) 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1
 count(T) 0, 1, 1, 2, 2, 2, 2, 2, 3, 4, 4, 4, 5, 5
 
 first occ   {u'A': 1, u'C': 4, u'$': 0, u'G': 7, u'T': 8}
+
+                  *        *        *        *
+            0  1  2  3  4  5  6  7  8  9 10 11 12
+           ---------------------------------------
+suffarr    12  0  7  2  1  5  8  4 11  6  3 10  9  (index w text)
+           ---------------------------------------
+suffarr           7        5     ? 11       10     (index w text)
+'G'                              ^
+
 #endif
 
             m_subchroma.push_back('$');
@@ -134,6 +143,17 @@ first occ   {u'A': 1, u'C': 4, u'$': 0, u'G': 7, u'T': 8}
                 foo[ix] = count3.value(4, ix, last_col);
             }
             const auto first_occ = BW::first_occurences(count3, last_col);
+            const auto a = BW::ix_by_base('$');
+            const auto b = BW::ix_by_base('A');
+            const auto c = BW::ix_by_base('C');
+            const auto d = BW::ix_by_base('G');
+            const auto e = BW::ix_by_base('T');
+            const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, 3);
+            std::vector<std::size_t> bar(full_suffix_array.size());
+            for (std::size_t ix{0}; ix < bar.size(); ++ix)
+            {
+                bar[ix] = partial_sufarr.value(ix, last_col, count3, first_occ);
+            }
 //            const auto full_suffix_array = BW::full_suffix_array(subchroma);
             ;
             // clear it prior to collecting another one
