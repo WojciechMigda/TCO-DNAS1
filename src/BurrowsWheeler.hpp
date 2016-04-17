@@ -78,6 +78,19 @@ SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_ar
     return last_col;
 }
 
+
+constexpr char base_by_ix(const std::size_t ix)
+{
+    return ((
+        ((uint64_t)'T' << 32) |
+        ((uint64_t)'G' << 24) |
+        ((uint64_t)'C' << 16) |
+        ((uint64_t)'A' << 8) |
+        ((uint64_t)'$' << 0)
+        ) >> (ix * 8)) & 0xFF;
+}
+
+
 typedef uint32_t count_type;
 
 struct Count
@@ -99,8 +112,15 @@ struct Count
         const auto remaining = position % m_skip;
         const auto mod_pos = position - remaining;
         const auto mod_count = m_counts[base_ix][mod_pos / m_skip];
-        const typename SeqT::value_type base_dict[] = {'$', 'A', 'C', 'G', 'T'}; // TODO uint64 shift&mask
-        const auto base = base_dict[base_ix];
+
+        if (remaining == 0)
+        {
+            return mod_count;
+        }
+
+//        const typename SeqT::value_type base_dict[] = {'$', 'A', 'C', 'G', 'T'}; // TODO uint64 shift&mask
+//        const auto base = base_dict[base_ix];
+        const auto base = base_by_ix(base_ix);
 
         const auto real_count =
             std::accumulate(
@@ -133,23 +153,41 @@ Count count(const SeqT & last_column, const std::size_t SKIP = 4)
     {
         const auto item = last_column[ix];
 
-        stat[0] += (item == '$');
-        stat[1] += (item == 'A');
-        stat[2] += (item == 'C');
-        stat[3] += (item == 'G');
-        stat[4] += (item == 'T');
+        for (int ix{0}; ix < 5; ++ix)
+        {
+            stat[ix] += (item == base_by_ix(ix));
+        }
+//        stat[0] += (item == '$');
+//        stat[1] += (item == 'A');
+//        stat[2] += (item == 'C');
+//        stat[3] += (item == 'G');
+//        stat[4] += (item == 'T');
 
         if (ix % SKIP == (SKIP - 1))
         {
-            result[0].push_back(stat[0]);
-            result[1].push_back(stat[1]);
-            result[2].push_back(stat[2]);
-            result[3].push_back(stat[3]);
-            result[4].push_back(stat[4]);
+            for (int ix{0}; ix < 5; ++ix)
+            {
+                result[ix].push_back(stat[ix]);
+            }
+//            result[0].push_back(stat[0]);
+//            result[1].push_back(stat[1]);
+//            result[2].push_back(stat[2]);
+//            result[3].push_back(stat[3]);
+//            result[4].push_back(stat[4]);
         }
     }
 
     return Count{SKIP, result};
+}
+
+
+template <typename SeqT>
+std::vector<std::size_t>
+first_occurences(const Count & count, const SeqT & last_column)
+{
+    std::vector<std::size_t> first_occ(5);
+
+    return first_occ;
 }
 
 
