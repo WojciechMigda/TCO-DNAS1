@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright (c) 2016 Wojciech Migda
  * All rights reserved
- * Distributed under the terms of the GNU LGPL v3
+ * Distributed under the terms of the MIT License
  *******************************************************************************
  *
  * Filename: BurrowsWheeler.hpp
@@ -45,8 +45,9 @@ full_suffix_array(const SeqT & text)
 {
     typedef uint32_t index_type;
 
-    std::vector<index_type> sarray;
-    sarray.resize(text.size());
+    std::vector<index_type> sarray(text.size());
+//    std::vector<index_type> sarray;
+//    sarray.resize(text.size());
 
     std::iota(sarray.begin(), sarray.end(), 0);
 
@@ -67,6 +68,7 @@ full_suffix_array(const SeqT & text)
 template <typename SeqT>
 SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_array)
 {
+//    SeqT last_col(text.size(), {});
     SeqT last_col;
     last_col.resize(text.size());
 

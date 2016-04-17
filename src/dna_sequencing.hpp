@@ -132,29 +132,34 @@ suffarr           7        5     ? 11       10     (index w text)
             m_subchroma.push_back('$');
             const auto & subchroma = m_subchroma;
 
-            const auto full_suffix_array = BW::full_suffix_array(std::string("ACATGCTACTTT$"));
-            const auto last_col = BW::last_column(std::string("ACATGCTACTTT$"), full_suffix_array);
-            const auto count = BW::count(last_col, 1);
-            const auto count3 = BW::count(last_col, 3);
-
-            std::vector<BW::count_type> foo(last_col.size() + 1);
-            for (std::size_t ix{0}; ix < foo.size(); ++ix)
-            {
-                foo[ix] = count3.value(4, ix, last_col);
-            }
-            const auto first_occ = BW::first_occurences(count3, last_col);
-            const auto a = BW::ix_by_base('$');
-            const auto b = BW::ix_by_base('A');
-            const auto c = BW::ix_by_base('C');
-            const auto d = BW::ix_by_base('G');
-            const auto e = BW::ix_by_base('T');
-            const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, 3);
-            std::vector<std::size_t> bar(full_suffix_array.size());
-            for (std::size_t ix{0}; ix < bar.size(); ++ix)
-            {
-                bar[ix] = partial_sufarr.value(ix, last_col, count3, first_occ);
-            }
-//            const auto full_suffix_array = BW::full_suffix_array(subchroma);
+//            const auto full_suffix_array = BW::full_suffix_array(std::string("ACATGCTACTTT$"));
+//            const auto last_col = BW::last_column(std::string("ACATGCTACTTT$"), full_suffix_array);
+//            const auto count = BW::count(last_col, 1);
+//            const auto count3 = BW::count(last_col, 3);
+//
+//            std::vector<BW::count_type> foo(last_col.size() + 1);
+//            for (std::size_t ix{0}; ix < foo.size(); ++ix)
+//            {
+//                foo[ix] = count3.value(4, ix, last_col);
+//            }
+//            const auto first_occ = BW::first_occurences(count3, last_col);
+//            const auto a = BW::ix_by_base('$');
+//            const auto b = BW::ix_by_base('A');
+//            const auto c = BW::ix_by_base('C');
+//            const auto d = BW::ix_by_base('G');
+//            const auto e = BW::ix_by_base('T');
+//            const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, 3);
+//            std::vector<std::size_t> bar(full_suffix_array.size());
+//            for (std::size_t ix{0}; ix < bar.size(); ++ix)
+//            {
+//                bar[ix] = partial_sufarr.value(ix, last_col, count3, first_occ);
+//            }
+            auto full_suffix_array = BW::full_suffix_array(subchroma);
+            const auto last_col = BW::last_column(subchroma, full_suffix_array);
+            const auto count = BW::count(last_col, 256);
+            const auto first_occ = BW::first_occurences(count, last_col);
+            const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, 256);
+            full_suffix_array.clear();
             ;
             // clear it prior to collecting another one
             std::cout << m_subchroma.size() << std::endl;
