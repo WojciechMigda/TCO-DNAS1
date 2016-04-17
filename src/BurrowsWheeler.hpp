@@ -268,13 +268,13 @@ better_match(const std::string & pattern, const Context & ctx)
     std::size_t top{0};
     std::size_t bottom{last_column.size() - 1};
 
-    std::size_t pattern_ix{pattern.size() - 1};
+    std::size_t pattern_ix{pattern.size()};
 
     while (top <= bottom)
     {
         if (pattern_ix != 0)
         {
-            const auto symbol = pattern[pattern_ix--];
+            const auto symbol = pattern[-1 + pattern_ix--];
             if (std::find(last_column.begin() + top, last_column.begin() + bottom + 1, symbol) != last_column.begin() + bottom + 1)
             {
                 const auto base_ix = ix_by_base(symbol);
