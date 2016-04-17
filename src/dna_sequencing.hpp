@@ -30,6 +30,7 @@
 #include "gx/dna_nucleobase_istream.hpp"
 
 #include "boost/algorithm/string/split.hpp"
+#include "boost/tokenizer.hpp"
 
 #include <string>
 #include <vector>
@@ -42,7 +43,9 @@ struct DNASequencing
     void initTest()
     {
         m_curr_chromaid = -1;
+        m_chroma_off = 0;
         m_subchroma.clear();
+        m_chromatid_bw_contexts.clear();
     }
 
     int initTest(int testDifficulty)
@@ -55,6 +58,12 @@ struct DNASequencing
     {
         // close any sub chroma remaining after passReferenceGenome
         close_sub_chroma();
+
+        std::cerr << "[DNAS1] Received " << m_chromatid_bw_contexts.size() << " chromatid(s)" << std::endl;
+        for (const auto & pair : m_chromatid_bw_contexts)
+        {
+            std::cerr << "[DNAS1] Chromatid " << pair.first << ": " << pair.second.size() << " subchromatid(s)" << std::endl;
+        }
 
         return 0;
     }
@@ -160,9 +169,14 @@ suffarr           7        5     ? 11       10     (index w text)
             const auto first_occ = BW::first_occurences(count, last_col);
             const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, 256);
             full_suffix_array.clear();
-            ;
-            // clear it prior to collecting another one
-            std::cout << m_subchroma.size() << std::endl;
+
+            m_chromatid_bw_contexts[m_curr_chromaid].push_back(BW::Context{last_col, count, first_occ, partial_sufarr});
+
+//            std::cerr << "[DNAS1] " << m_subchroma.size() << std::endl;
+        }
+        if (m_subchroma.size())
+        {
+            std::cerr << "[DNAS1] " << m_subchroma.size() << std::endl;
         }
 
         m_subchroma.clear();
@@ -172,10 +186,29 @@ suffarr           7        5     ? 11       10     (index w text)
         int chromatidSequenceId,
         const std::vector<std::string> & chromatidSequence)
     {
+        if (m_curr_chromaid != chromatidSequenceId)
+        {
+            // reset offset with the chromatid when we start receiving a new one
+            m_chroma_off = 0;
+        }
         m_curr_chromaid = chromatidSequenceId;
 
         for (const auto & chroma_piece : chromatidSequence)
         {
+            // tokenizer
+//            typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
+//            boost::char_separator<char> sep("N", "", boost::drop_empty_tokens);
+//            tokenizer tokens(chroma_piece, sep);
+//            for (tokenizer::iterator tok_iter = tokens.begin();
+//                     tok_iter != tokens.end();
+//                     ++tok_iter)
+//            {
+//                const auto off = tok_iter.base() - chroma_piece.begin() - tok_iter->size();
+//
+//                //
+//            }
+
+
             std::vector<std::string> Npieces;
             boost::split(Npieces, chroma_piece, [](char c){return c == 'N';}, boost::token_compress_on);
             if (Npieces.back().empty())
@@ -210,6 +243,8 @@ suffarr           7        5     ? 11       10     (index w text)
             {
                 close_sub_chroma();
             }
+
+            m_chroma_off += chroma_piece.size();
         }
 
         return 0;
@@ -222,18 +257,48 @@ suffarr           7        5     ? 11       10     (index w text)
         const std::vector<std::string> & readName,
         const std::vector<std::string> & readSequence)
     {
+//        for (std::size_t ix{0}; ix < readName.size(); ix += 2)
+//        {
+//            const auto & head_name = readName[ix];
+//            const auto & tail_name = readName[ix + 1];
+//            const auto & head_read = readSequence[ix];
+//            const auto & tail_read = readSequence[ix + 1];
+//
+//            for (const auto & chroma_bw : m_chromatid_bw_contexts)
+//            {
+//                const auto chroma_id = chroma_bw.first;
+//
+//                for (const auto & bw_ctx : chroma_bw.second)
+//                {
+//                    const auto matched = BW::better_match(head_read, bw_ctx);
+//                    if (matched.size())
+//                    {
+//                        std::cerr << "[DNAS1] matched " << matched.size() << std::endl;
+//                        std::cerr << "[DNAS1] " << matched.front() << std::endl;
+//                        std::cerr << "[DNAS1] " << head_read << std::endl;
+////                        std::strncmp(head_read.c_str(), );
+//                    }
+//                }
+//            }
+//        }
+
+
         std::vector<std::string> ret(N, "");
+
         for (int i = 0; i < N; ++i)
         {
             std::string qname = "sim" + std::to_string(1 + i / 2) + '/'
                 + ((i % 2) ? '2' : '1');
             ret[i] = qname + ",20,1,150,+,0";
         }
+
         return ret;
     }
 
     int m_curr_chromaid;
+    std::size_t m_chroma_off;
     std::string m_subchroma;
+    std::unordered_map<int, std::vector<BW::Context>> m_chromatid_bw_contexts;
 };
 
 #endif /* DNA_SEQUENCING_HPP_ */

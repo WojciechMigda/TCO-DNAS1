@@ -34,6 +34,7 @@
 #include <memory>
 #include <utility>
 #include <unordered_map>
+#include <cstdint>
 
 namespace BW
 {
@@ -244,6 +245,62 @@ partial_suffix_array(const std::vector<uint32_t> & full_suffix_array, const std:
     }
 
     return PartialSuffixArray{SKIP, partial};
+}
+
+
+struct Context
+{
+    const std::string last_column;
+    const BW::Count count;
+    const std::vector<std::size_t> first_occurences;
+    const BW::PartialSuffixArray partial_suffix_array;
+};
+
+
+std::vector<uint32_t>
+better_match(const std::string & pattern, const Context & ctx)
+{
+    const auto & last_column{ctx.last_column};
+    const auto & suffix_array{ctx.partial_suffix_array};
+    const auto & count{ctx.count};
+    const auto & first_occurences{ctx.first_occurences};
+
+    std::size_t top{0};
+    std::size_t bottom{last_column.size() - 1};
+
+    std::size_t pattern_ix{pattern.size() - 1};
+
+    while (top <= bottom)
+    {
+        if (pattern_ix != 0)
+        {
+            const auto symbol = pattern[pattern_ix--];
+            if (std::find(last_column.begin() + top, last_column.begin() + bottom + 1, symbol) != last_column.begin() + bottom + 1)
+            {
+                const auto base_ix = ix_by_base(symbol);
+
+                top = first_occurences[base_ix] + count.value(base_ix, top, last_column);
+                bottom = first_occurences[base_ix] + count.value(base_ix, bottom + 1, last_column) - 1;
+            }
+            else
+            {
+                return {};
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    std::vector<uint32_t> range;
+
+    for (auto ix{top}; ix <= bottom; ++ix)
+    {
+        range.push_back(suffix_array.value(ix, last_column, count, first_occurences));
+    }
+
+    return range;
 }
 
 
