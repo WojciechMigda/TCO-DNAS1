@@ -281,10 +281,10 @@ struct Context
 std::vector<uint32_t>
 better_match(const std::string & pattern, const Context & ctx)
 {
-    const auto & last_column{ctx.last_column};
-    const auto & suffix_array{ctx.partial_suffix_array};
-    const auto & count{ctx.count};
-    const auto & first_occurences{ctx.first_occurences};
+    const auto & last_column(ctx.last_column);
+    const auto & suffix_array(ctx.partial_suffix_array);
+    const auto & count(ctx.count);
+    const auto & first_occurences(ctx.first_occurences);
 
     std::size_t top{0};
     std::size_t bottom{last_column.size() - 1};
@@ -300,8 +300,8 @@ better_match(const std::string & pattern, const Context & ctx)
             {
                 const auto base_ix = ix_by_base(symbol);
 
-                top = first_occurences[base_ix] + count.value(base_ix, top, last_column);
-                bottom = first_occurences[base_ix] + count.value(base_ix, bottom + 1, last_column) - 1;
+                top = first_occurences.at(base_ix) + count.value(base_ix, top, last_column);
+                bottom = first_occurences.at(base_ix) + count.value(base_ix, bottom + 1, last_column) - 1;
             }
             else
             {
@@ -316,7 +316,7 @@ better_match(const std::string & pattern, const Context & ctx)
 
     std::vector<uint32_t> range;
 
-    for (auto ix{top}; ix <= bottom; ++ix)
+    for (auto ix = top; ix <= bottom; ++ix)
     {
         range.push_back(suffix_array.value(ix, last_column, count, first_occurences));
     }

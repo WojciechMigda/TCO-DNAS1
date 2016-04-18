@@ -456,7 +456,9 @@ suffarr           7        5     ? 11       10     (index w text)
                 std::sort(close_pairs.begin(), close_pairs.end(),
                     [](const std::tuple<int, int, int> & lhs, const std::tuple<int, int, int> & rhs)
                     {
-                        return std::abs(std::get<1>(lhs) - std::get<2>(lhs)) < std::abs(std::get<1>(rhs) - std::get<2>(rhs));
+                        const auto dlhs = std::abs(std::get<1>(lhs) - std::get<2>(lhs));
+                        const auto drhs = std::abs(std::get<1>(rhs) - std::get<2>(rhs));
+                        return std::abs(dlhs - 450) < std::abs(drhs - 450);
                     });
 
                 head_res = head_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
@@ -469,6 +471,10 @@ suffarr           7        5     ? 11       10     (index w text)
                     std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
                     (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ",1.00";
             }
+//            else if()
+//            {
+//
+//            }
             else
             {
                 head_res = head_name + ",20,1,150,+,0.00";
