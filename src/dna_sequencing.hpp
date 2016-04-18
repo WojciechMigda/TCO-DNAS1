@@ -26,8 +26,8 @@
 #define DNA_SEQUENCING_HPP_
 
 #include "BurrowsWheeler.hpp"
-#include "gx/dna_nucleobase.hpp"
-#include "gx/dna_nucleobase_istream.hpp"
+//#include "gx/dna_nucleobase.hpp"
+//#include "gx/dna_nucleobase_istream.hpp"
 
 //#define BOOST_TOKENIZER
 #ifdef BOOST_TOKENIZER
@@ -42,6 +42,17 @@
 #include <utility>
 #include <unordered_map>
 #include <cstddef>
+
+
+#include <sys/time.h>
+long int timestamp()
+{
+    timeval tv;
+    gettimeofday(&tv, NULL);
+
+    return tv.tv_sec;// + tv.tv_usec / 1e6;
+}
+
 
 std::string reverse_complement(const std::string & seq)
 {
@@ -298,6 +309,8 @@ suffarr           7        5     ? 11       10     (index w text)
         int chromatidSequenceId,
         const std::vector<std::string> & chromatidSequence)
     {
+        const auto time0 = timestamp();
+
         if (m_curr_chromaid != chromatidSequenceId)
         {
             // reset offset with the chromatid when we start receiving a new one
@@ -384,6 +397,8 @@ suffarr           7        5     ? 11       10     (index w text)
             }
         }
 
+        std::cerr << "[DNAS1] elapsed time (passReferenceGenome) " << timestamp() - time0 << std::endl;
+
         return 0;
     }
 
@@ -406,7 +421,14 @@ suffarr           7        5     ? 11       10     (index w text)
             const auto head_read_rev = reverse_complement(head_read_fwd);
             const auto tail_read_rev = reverse_complement(tail_read_fwd);
 
-            std::vector<std::tuple<int, int, int>> close_pairs; // chroma_id, head_pos, tail_pos
+            //              <chroma_id, head_pos, tail_pos>
+            std::vector<std::tuple<int, int, int>> close_pairs;
+
+            //             <chroma_id, position>
+            std::vector<std::pair<int, uint32_t>> cumm_matched_head_fwd;
+            std::vector<std::pair<int, uint32_t>> cumm_matched_head_rev;
+            std::vector<std::pair<int, uint32_t>> cumm_matched_tail_fwd;
+            std::vector<std::pair<int, uint32_t>> cumm_matched_tail_rev;
 
             for (const auto & chroma_bw : m_chromatid_bw_contexts)
             {
@@ -445,6 +467,23 @@ suffarr           7        5     ? 11       10     (index w text)
                             }
                         }
                     }
+
+                    auto append = [](std::vector<std::pair<int, uint32_t>> & cumm,
+                                     const std::vector<uint32_t> & src,
+                                     int chroma_id, uint32_t offset)
+                    {
+                        cumm.reserve(cumm.size() + src.size());
+                        std::transform(src.cbegin(), src.cend(), std::back_inserter(cumm),
+                            [&chroma_id, &offset](const uint32_t what) -> std::pair<int, uint32_t>
+                            {
+                                return {chroma_id, what + offset};
+                            }
+                        );
+                    };
+                    append(cumm_matched_head_fwd, matched_head_fwd, chroma_id, offset);
+                    append(cumm_matched_head_rev, matched_head_rev, chroma_id, offset);
+                    append(cumm_matched_tail_fwd, matched_tail_fwd, chroma_id, offset);
+                    append(cumm_matched_tail_rev, matched_tail_rev, chroma_id, offset);
                 }
             }
 
@@ -471,10 +510,66 @@ suffarr           7        5     ? 11       10     (index w text)
                     std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
                     (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ",1.00";
             }
-//            else if()
-//            {
-//
-//            }
+            else if (cumm_matched_head_fwd.size())
+            {
+                const int chroma_id = std::get<0>(cumm_matched_head_fwd.front());
+                const int position = std::get<1>(cumm_matched_head_fwd.front());
+
+                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1) + ',' +
+                    std::to_string(std::abs(position) + 150) + ',' +
+                    (position > 0 ? '+' : '-') + ",0.99";
+
+                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 451) + ',' +
+                    std::to_string(std::abs(position) + 600) + ',' +
+                    (position > 0 ? '-' : '+') + ",0.50";
+            }
+            else if (cumm_matched_tail_rev.size())
+            {
+                const int chroma_id = std::get<0>(cumm_matched_tail_rev.front());
+                const int position = std::get<1>(cumm_matched_tail_rev.front());
+
+                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1 - 450) + ',' +
+                    std::to_string(std::abs(position) + 150 - 450) + ',' +
+                    (position > 0 ? '+' : '-') + ",0.50";
+
+                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1) + ',' +
+                    std::to_string(std::abs(position) + 150) + ',' +
+                    (position > 0 ? '-' : '+') + ",0.99";
+            }
+            else if (cumm_matched_head_rev.size())
+            {
+                const int chroma_id = std::get<0>(cumm_matched_head_rev.front());
+                const int position = std::get<1>(cumm_matched_head_rev.front());
+
+                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1) + ',' +
+                    std::to_string(std::abs(position) + 150) + ',' +
+                    (position > 0 ? '-' : '+') + ",0.99";
+
+                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1 - 450) + ',' +
+                    std::to_string(std::abs(position) - 300) + ',' +
+                    (position > 0 ? '+' : '-') + ",0.50";
+            }
+            else if (cumm_matched_tail_fwd.size())
+            {
+                const int chroma_id = std::get<0>(cumm_matched_tail_fwd.front());
+                const int position = std::get<1>(cumm_matched_tail_fwd.front());
+
+                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1 + 450) + ',' +
+                    std::to_string(std::abs(position) + 600) + ',' +
+                    (position > 0 ? '-' : '+') + ",0.50";
+
+                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
+                    std::to_string(std::abs(position) + 1) + ',' +
+                    std::to_string(std::abs(position) + 150) + ',' +
+                    (position > 0 ? '+' : '-') + ",0.99";
+            }
             else
             {
                 head_res = head_name + ",20,1,150,+,0.00";
