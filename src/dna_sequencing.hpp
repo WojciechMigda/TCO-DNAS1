@@ -29,13 +29,122 @@
 #include "gx/dna_nucleobase.hpp"
 #include "gx/dna_nucleobase_istream.hpp"
 
-#include "boost/algorithm/string/split.hpp"
-#include "boost/tokenizer.hpp"
+//#define BOOST_TOKENIZER
+#ifdef BOOST_TOKENIZER
+#include "DISABLED/boost/tokenizer.hpp"
+#endif
 
 #include <string>
 #include <vector>
 #include <iostream>
-#include <sstream>
+#include <cassert>
+#include <cstdint>
+#include <utility>
+#include <unordered_map>
+#include <cstddef>
+
+std::string reverse_complement(const std::string & seq)
+{
+    std::string result;
+    result.reserve(seq.size());
+
+    std::transform(seq.crbegin(), seq.crend(), std::back_inserter(result),
+        [](const char base)
+        {
+            return BW::nucleobase_by_ix(BW::ix_by_nucleobase(base) ^ 0x3);
+        }
+    );
+
+    return result;
+}
+
+
+std::pair<std::string, std::string>
+read_pair_match(
+    const int chroma_id,
+    const std::string & head_name,
+    const std::string & head_read,
+    const std::string & tail_name,
+    const std::string & tail_read,
+    const BW::Context & bw_ctx,
+    const std::size_t offset
+    )
+{
+    std::vector<std::pair<int, int>> close_pairs;
+
+    const auto rev_tail_read = reverse_complement(tail_read);
+    const auto matched_tail_rev = BW::better_match(rev_tail_read, bw_ctx);
+    if (matched_tail_rev.size())
+    {
+        const auto matched_head_fwd = BW::better_match(head_read, bw_ctx);
+        if (matched_head_fwd.size())
+        {
+            for (const auto h_pos : matched_head_fwd)
+            {
+                for (const auto t_pos : matched_tail_rev)
+                {
+                    const auto dist = /*std::abs*/(t_pos - h_pos);
+                    if (dist >= 150 && dist <= 750)
+                    {
+                        close_pairs.emplace_back(h_pos, t_pos);
+                    }
+                }
+            }
+        }
+    }
+
+    const auto rev_head_read = reverse_complement(head_read);
+    const auto matched_head_rev = BW::better_match(rev_head_read, bw_ctx);
+    if (matched_head_rev.size())
+    {
+        const auto matched_tail_fwd = BW::better_match(tail_read, bw_ctx);
+        if (matched_tail_fwd.size())
+        {
+            for (const auto h_pos : matched_head_rev)
+            {
+                for (const auto t_pos : matched_tail_fwd)
+                {
+                    const auto dist = /*std::abs*/(h_pos - t_pos);
+                    if (dist >= 150 && dist <= 750)
+                    {
+                        close_pairs.emplace_back(-h_pos, -t_pos);
+                    }
+                }
+            }
+        }
+    }
+
+
+    std::string head_res;
+    std::string tail_res;
+
+    if (close_pairs.size() != 0)
+    {
+        std::sort(close_pairs.begin(), close_pairs.end(),
+            [](const std::pair<int, int> & lhs, const std::pair<int, int> & rhs)
+            {
+                return std::abs(lhs.first - lhs.second) < std::abs(rhs.first - rhs.second);
+            });
+
+        head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
+            std::to_string(std::abs(close_pairs.front().first) + 1 + offset) + ',' +
+            std::to_string(std::abs(close_pairs.front().first) + 150 + offset) + ',' +
+            (close_pairs.front().first > 0 ? '+' : '-') + ',' +
+            (close_pairs.front().first > 0 ? head_read : rev_head_read);
+        tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
+            std::to_string(std::abs(close_pairs.front().second) + 1 + offset) + ',' +
+            std::to_string(std::abs(close_pairs.front().second) + 150 + offset) + ',' +
+            (close_pairs.front().first > 0 ? '-' : '+') + ',' +
+            (close_pairs.front().first > 0 ? rev_tail_read : tail_read);
+    }
+    else
+    {
+        head_res = head_name + ',' + std::to_string(chroma_id) + "1,150,+," + head_read;
+        tail_res = tail_name + ',' + std::to_string(chroma_id) + "450,600,-," +  rev_tail_read;
+    }
+
+    return {head_res, tail_res};
+}
 
 
 struct DNASequencing
@@ -199,12 +308,12 @@ suffarr           7        5     ? 11       10     (index w text)
 
         for (const auto & chroma_piece : chromatidSequence)
         {
-            // tokenizer
+            std::vector<std::pair<uint32_t, std::string>> Npieces;
+
+#ifdef BOOST_TOKENIZER
             typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
             boost::char_separator<char> sep("N", "", boost::drop_empty_tokens);
             tokenizer tokens(chroma_piece, sep);
-
-            std::vector<std::pair<uint32_t, std::string>> Npieces;
 
             for (tokenizer::iterator tok_iter = tokens.begin();
                      tok_iter != tokens.end();
@@ -214,7 +323,38 @@ suffarr           7        5     ? 11       10     (index w text)
 
                 Npieces.emplace_back(offset, *tok_iter);
             }
+#else
+            struct NaiveTokenizer
+            {
+                NaiveTokenizer(const char * str, std::size_t sz) :
+                    m_end(str + sz),
+                    m_curr_from(str),
+                    m_curr_to(str)
+                {
+                    next();
+                }
 
+                void next()
+                {
+                    m_curr_from = std::find_if(m_curr_to, m_end, [](const char what){return what != 'N';});
+                    m_curr_to = std::find_if(m_curr_from, m_end, [](const char what){return what == 'N';});
+                }
+
+                char const * const m_end;
+                char const * m_curr_from;
+                char const * m_curr_to;
+            };
+
+            NaiveTokenizer tokenizer(chroma_piece.c_str(), chroma_piece.size());
+            while (tokenizer.m_curr_from < tokenizer.m_end)
+            {
+                //std::cout << "BAR offset: " << tokenizer.m_curr_from - chroma_piece.c_str() << ", " << "token: " << std::string(tokenizer.m_curr_from, tokenizer.m_curr_to) << std::endl;
+                Npieces.emplace_back(
+                    tokenizer.m_curr_from - chroma_piece.c_str(),
+                    std::string(tokenizer.m_curr_from, tokenizer.m_curr_to));
+                tokenizer.next();
+            }
+#endif
 
             if (chroma_piece.front() == 'N')
             {
@@ -254,12 +394,19 @@ suffarr           7        5     ? 11       10     (index w text)
         const std::vector<std::string> & readName,
         const std::vector<std::string> & readSequence)
     {
+        std::vector<std::string> ret;
+        ret.reserve(N);
+
         for (std::size_t ix{0}; ix < readName.size(); ix += 2)
         {
             const auto & head_name = readName[ix];
             const auto & tail_name = readName[ix + 1];
-            const auto & head_read = readSequence[ix];
-            const auto & tail_read = readSequence[ix + 1];
+            const auto & head_read_fwd = readSequence[ix];
+            const auto & tail_read_fwd = readSequence[ix + 1];
+            const auto head_read_rev = reverse_complement(head_read_fwd);
+            const auto tail_read_rev = reverse_complement(tail_read_fwd);
+
+            std::vector<std::tuple<int, int, int>> close_pairs; // chroma_id, head_pos, tail_pos
 
             for (const auto & chroma_bw : m_chromatid_bw_contexts)
             {
@@ -269,27 +416,77 @@ suffarr           7        5     ? 11       10     (index w text)
                 {
                     const auto offset = offset_bw_ctx.first;
                     const auto & bw_ctx = offset_bw_ctx.second;
-                    const auto matched = BW::better_match(head_read, bw_ctx);
-                    if (matched.size())
+
+                    const auto matched_head_fwd = BW::better_match(head_read_fwd, bw_ctx);
+                    const auto matched_head_rev = BW::better_match(head_read_rev, bw_ctx);
+                    const auto matched_tail_fwd = BW::better_match(tail_read_fwd, bw_ctx);
+                    const auto matched_tail_rev = BW::better_match(tail_read_rev, bw_ctx);
+
+                    for (const auto h_pos : matched_head_fwd)
                     {
-                        std::cerr << "[DNAS1] matched " << matched.size() << std::endl;
-                        std::cerr << "[DNAS1] " << matched.front() + offset << std::endl;
-                        std::cerr << "[DNAS1] " << head_read << std::endl;
-//                        std::strncmp(head_read.c_str(), );
+                        for (const auto t_pos : matched_tail_rev)
+                        {
+                            const auto dist = t_pos - h_pos;
+                            if (dist >= 150 && dist <= 750)
+                            {
+                                close_pairs.emplace_back(chroma_id, h_pos + offset, t_pos + offset);
+                            }
+                        }
+                    }
+
+                    for (const auto h_pos : matched_head_rev)
+                    {
+                        for (const auto t_pos : matched_tail_fwd)
+                        {
+                            const auto dist = h_pos - t_pos;
+                            if (dist >= 150 && dist <= 750)
+                            {
+                                close_pairs.emplace_back(chroma_id, -(h_pos + offset), -(t_pos + offset));
+                            }
+                        }
                     }
                 }
             }
+
+            std::string head_res;
+            std::string tail_res;
+
+            if (close_pairs.size() != 0)
+            {
+                std::sort(close_pairs.begin(), close_pairs.end(),
+                    [](const std::tuple<int, int, int> & lhs, const std::tuple<int, int, int> & rhs)
+                    {
+                        return std::abs(std::get<1>(lhs) - std::get<2>(lhs)) < std::abs(std::get<1>(rhs) - std::get<2>(rhs));
+                    });
+
+                head_res = head_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
+                    std::to_string(std::abs(std::get<1>(close_pairs.front())) + 1) + ',' +
+                    std::to_string(std::abs(std::get<1>(close_pairs.front())) + 150) + ',' +
+                    (std::get<1>(close_pairs.front()) > 0 ? '+' : '-') + ",1.00";
+
+                tail_res = tail_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
+                    std::to_string(std::abs(std::get<2>(close_pairs.front())) + 1) + ',' +
+                    std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
+                    (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ",1.00";
+            }
+            else
+            {
+                head_res = head_name + ",20,1,150,+,0.00";
+                tail_res = tail_name + ",20,450,600,-,0.00";
+            }
+
+            ret.push_back(head_res);
+            ret.push_back(tail_res);
         }
+        assert(ret.size() == N);
 
-
-        std::vector<std::string> ret(N, "");
-
-        for (int i = 0; i < N; ++i)
-        {
-            std::string qname = "sim" + std::to_string(1 + i / 2) + '/'
-                + ((i % 2) ? '2' : '1');
-            ret[i] = qname + ",20,1,150,+,0";
-        }
+//        std::vector<std::string> ret(N, "");
+//        for (int i = 0; i < N; ++i)
+//        {
+//            std::string qname = "sim" + std::to_string(1 + i / 2) + '/'
+//                + ((i % 2) ? '2' : '1');
+//            ret[i] = qname + ",20,1,150,+,0";
+//        }
 
         return ret;
     }
