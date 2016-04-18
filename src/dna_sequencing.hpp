@@ -397,7 +397,7 @@ suffarr           7        5     ? 11       10     (index w text)
             }
         }
 
-        std::cerr << "[DNAS1] elapsed time (passReferenceGenome) " << timestamp() - time0 << std::endl;
+        std::cerr << "[DNAS1] elapsed time (passReferenceGenome) " << timestamp() - time0 << " secs" << std::endl;
 
         return 0;
     }
@@ -409,11 +409,18 @@ suffarr           7        5     ? 11       10     (index w text)
         const std::vector<std::string> & readName,
         const std::vector<std::string> & readSequence)
     {
+        const auto time0 = timestamp();
+
         std::vector<std::string> ret;
         ret.reserve(N);
 
         for (std::size_t ix{0}; ix < readName.size(); ix += 2)
         {
+            if (ix % 100 == 0)
+            {
+                std::cerr << "Doing read pair " << ix / 2 << " out of " << readName.size() / 2 << std::endl;
+            }
+
             const auto & head_name = readName[ix];
             const auto & tail_name = readName[ix + 1];
             const auto & head_read_fwd = readSequence[ix];
@@ -588,6 +595,8 @@ suffarr           7        5     ? 11       10     (index w text)
 //                + ((i % 2) ? '2' : '1');
 //            ret[i] = qname + ",20,1,150,+,0";
 //        }
+
+        std::cerr << "[DNAS1] elapsed time (getAlignment) " << timestamp() - time0 << " secs" << std::endl;
 
         return ret;
     }
