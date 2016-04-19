@@ -233,7 +233,7 @@ suffarr           7        5     ? 11       10     (index w text)
 
         for (const auto & chroma_piece : chromatidSequence)
         {
-            std::vector<std::pair<uint32_t, std::string>> Npieces;
+            std::vector<std::pair<BW::pos_type, std::string>> Npieces;
 
 #ifdef BOOST_TOKENIZER
             typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
@@ -244,7 +244,7 @@ suffarr           7        5     ? 11       10     (index w text)
                      tok_iter != tokens.end();
                      ++tok_iter)
             {
-                const uint32_t offset = tok_iter.base() - chroma_piece.begin() - tok_iter->size();
+                const BW::pos_type offset = tok_iter.base() - chroma_piece.begin() - tok_iter->size();
 
                 Npieces.emplace_back(offset, *tok_iter);
             }
@@ -345,10 +345,10 @@ suffarr           7        5     ? 11       10     (index w text)
             std::vector<std::tuple<int, int, int>> close_pairs;
 
             //             <chroma_id, position>
-            std::vector<std::pair<int, uint32_t>> cumm_matched_head_fwd;
-            std::vector<std::pair<int, uint32_t>> cumm_matched_head_rev;
-            std::vector<std::pair<int, uint32_t>> cumm_matched_tail_fwd;
-            std::vector<std::pair<int, uint32_t>> cumm_matched_tail_rev;
+            std::vector<std::pair<int, BW::pos_type>> cumm_matched_head_fwd;
+            std::vector<std::pair<int, BW::pos_type>> cumm_matched_head_rev;
+            std::vector<std::pair<int, BW::pos_type>> cumm_matched_tail_fwd;
+            std::vector<std::pair<int, BW::pos_type>> cumm_matched_tail_rev;
 
             for (const auto & chroma_bw : m_chromatid_bw_contexts)
             {
@@ -392,13 +392,13 @@ suffarr           7        5     ? 11       10     (index w text)
                         }
                     }
 
-                    auto append = [](std::vector<std::pair<int, uint32_t>> & cumm,
-                                     const std::vector<uint32_t> & src,
-                                     int chroma_id, uint32_t offset)
+                    auto append = [](std::vector<std::pair<int, BW::pos_type>> & cumm,
+                                     const std::vector<BW::pos_type> & src,
+                                     int chroma_id, BW::pos_type offset)
                     {
                         cumm.reserve(cumm.size() + src.size());
                         std::transform(src.cbegin(), src.cend(), std::back_inserter(cumm),
-                            [&chroma_id, &offset](const uint32_t what) -> std::pair<int, uint32_t>
+                            [&chroma_id, &offset](const BW::pos_type what) -> std::pair<int, BW::pos_type>
                             {
                                 return {chroma_id, what + offset};
                             }
@@ -534,7 +534,7 @@ suffarr           7        5     ? 11       10     (index w text)
     // subsections are separated by Ns in a chromatid
     std::string m_subchroma;
     // lists of BW contexts for each chromatid collected
-    std::unordered_map<int, std::vector<std::pair<uint32_t, BW::Context>>> m_chromatid_bw_contexts;
+    std::unordered_map<int, std::vector<std::pair<BW::pos_type, BW::Context>>> m_chromatid_bw_contexts;
 };
 
 #endif /* DNA_SEQUENCING_HPP_ */

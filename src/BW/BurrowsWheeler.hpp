@@ -69,7 +69,7 @@ full_suffix_array(const SeqT & text)
 
 
 template <typename SeqT>
-SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_array)
+SeqT last_column(const SeqT & text, const std::vector<pos_type> & full_suffix_array)
 {
 //    SeqT last_col(text.size(), {});
     SeqT last_col;
@@ -79,7 +79,7 @@ SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_ar
 
     std::transform(full_suffix_array.cbegin(), full_suffix_array.cend(),
         last_col.begin(),
-        [&text](const uint32_t ix)
+        [&text](const pos_type ix)
         {
             return ix == 0 ? '$' : text[ix - 1];
         });
@@ -235,11 +235,11 @@ first_occurences(const Count & count, const SeqT & last_column)
 struct PartialSuffixArray
 {
     const std::size_t m_skip;
-    const std::unordered_map<uint32_t, uint32_t> m_sufarr;
+    const std::unordered_map<pos_type, pos_type> m_sufarr;
 
     template <typename SeqT>
-    uint32_t value(
-        uint32_t ix,
+    pos_type value(
+        pos_type ix,
         const SeqT & last_column,
         const Count & count,
         const std::vector<std::size_t> & first_occurrences) const
@@ -263,14 +263,14 @@ struct PartialSuffixArray
 };
 
 PartialSuffixArray
-partial_suffix_array(const std::vector<uint32_t> & full_suffix_array, const std::size_t SKIP = 4)
+partial_suffix_array(const std::vector<pos_type> & full_suffix_array, const std::size_t SKIP = 4)
 {
     if (full_suffix_array.size() == 0)
     {
         return PartialSuffixArray{SKIP, {}};
     }
 
-    std::unordered_map<uint32_t, uint32_t> partial;
+    std::unordered_map<pos_type, pos_type> partial;
     for (std::size_t ix{0}; ix < full_suffix_array.size(); ix += SKIP)
     {
         partial[ix] = full_suffix_array[ix];
@@ -289,7 +289,7 @@ struct Context
 };
 
 
-std::vector<uint32_t>
+std::vector<pos_type>
 better_match(const std::string & pattern, const Context & ctx)
 {
     const auto & last_column(ctx.last_column);
@@ -325,7 +325,7 @@ better_match(const std::string & pattern, const Context & ctx)
         }
     }
 
-    std::vector<uint32_t> range;
+    std::vector<pos_type> range;
 
     for (auto ix = top; ix <= bottom; ++ix)
     {
