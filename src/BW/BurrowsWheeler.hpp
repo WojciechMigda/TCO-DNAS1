@@ -35,25 +35,27 @@
 #include <utility>
 #include <unordered_map>
 #include <cstdint>
+#include <cassert>
 
 namespace BW
 {
 
 
+typedef uint32_t pos_type;
+
+
 template <typename SeqT>
-std::vector<uint32_t>
+std::vector<pos_type>
 full_suffix_array(const SeqT & text)
 {
-    typedef uint32_t index_type;
-
-    std::vector<index_type> sarray(text.size());
+    std::vector<pos_type> sarray(text.size());
 //    std::vector<index_type> sarray;
 //    sarray.resize(text.size());
 
     std::iota(sarray.begin(), sarray.end(), 0);
 
     std::sort(sarray.begin(), sarray.end(),
-        [&text](const index_type lhix, const index_type rhix) -> bool
+        [&text](const pos_type lhix, const pos_type rhix) -> bool
         {
             typename SeqT::const_pointer lhs = text.data() + lhix;
             typename SeqT::const_pointer rhs = text.data() + rhix;
@@ -73,6 +75,8 @@ SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_ar
     SeqT last_col;
     last_col.resize(text.size());
 
+    assert(full_suffix_array.size() == last_col.size());
+
     std::transform(full_suffix_array.cbegin(), full_suffix_array.cend(),
         last_col.begin(),
         [&text](const uint32_t ix)
@@ -87,11 +91,13 @@ SeqT last_column(const SeqT & text, const std::vector<uint32_t> & full_suffix_ar
 constexpr char base_by_ix(const std::size_t ix)
 {
     return ((
-        ((uint64_t)'T' << 32) |
-        ((uint64_t)'G' << 24) |
-        ((uint64_t)'C' << 16) |
-        ((uint64_t)'A' << 8) |
-        ((uint64_t)'$' << 0)
+        ((uint64_t)'N' << 40) |
+        ((uint64_t)'$' << 32) |
+        ((uint64_t)'T' << 24) |
+        ((uint64_t)'G' << 16) |
+        ((uint64_t)'C' << 8) |
+        ((uint64_t)'A' << 0) |
+        0
         ) >> (ix * 8)) & 0xFF;
 }
 
@@ -102,21 +108,9 @@ constexpr char nucleobase_by_ix(const std::size_t ix)
         ((uint32_t)'T' << 24) |
         ((uint32_t)'G' << 16) |
         ((uint32_t)'C' << 8) |
-        ((uint32_t)'A' << 0)
+        ((uint32_t)'A' << 0) |
+        0
         ) >> (ix * 8)) & 0xFF;
-}
-
-
-constexpr std::size_t ix_by_base(const char base)
-{
-    return
-        base == '$' ?
-            0
-            :
-            ((((0ULL << ('A' - 'A')) |
-               (1ULL << ('C' - 'A')) |
-               (2ULL << ('G' - 'A')) |
-               (3ULL << ('T' - 'A'))) >> (base - 'A')) & 0x3) + 1;
 }
 
 
@@ -127,6 +121,18 @@ constexpr std::size_t ix_by_nucleobase(const char base)
             (1ULL << ('C' - 'A')) |
             (2ULL << ('G' - 'A')) |
             (3ULL << ('T' - 'A'))) >> (base - 'A')) & 0x3);
+}
+
+
+constexpr std::size_t ix_by_base(const char base)
+{
+    return
+        base == '$' ?
+            4
+            : base == 'N' ?
+                5
+                :
+                ix_by_nucleobase(base);
 }
 
 
@@ -143,6 +149,8 @@ struct Count
         const std::size_t position,
         const SeqT & last_column) const
     {
+        assert(position <= last_column.size());
+
         if (position == 0)
         {
             return 0;
@@ -214,11 +222,11 @@ first_occurences(const Count & count, const SeqT & last_column)
 {
     std::vector<std::size_t> first_occ(5);
 
-    first_occ[0] = 0; // $
-    first_occ[1] = 1; // A
-    first_occ[2] = count.value(1, last_column.size(), last_column) + 1;            // C
-    first_occ[3] = count.value(2, last_column.size(), last_column) + first_occ[2]; // G
-    first_occ[4] = count.value(3, last_column.size(), last_column) + first_occ[3]; // T
+    first_occ[ix_by_base('$')] = 0;
+    first_occ[ix_by_base('A')] = 1;
+    first_occ[ix_by_base('C')] = count.value(ix_by_base('A'), last_column.size(), last_column) + first_occ[ix_by_base('A')];
+    first_occ[ix_by_base('G')] = count.value(ix_by_base('C'), last_column.size(), last_column) + first_occ[ix_by_base('C')];
+    first_occ[ix_by_base('T')] = count.value(ix_by_base('G'), last_column.size(), last_column) + first_occ[ix_by_base('G')];
 
     return first_occ;
 }
@@ -236,10 +244,13 @@ struct PartialSuffixArray
         const Count & count,
         const std::vector<std::size_t> & first_occurrences) const
     {
+        assert(ix < last_column.size());
+
         std::size_t backtrack{0};
 
         while (m_sufarr.count(ix) == 0)
         {
+            assert(ix < last_column.size());
             const auto pred_base = last_column[ix];
             const auto base_ix = ix_by_base(pred_base);
             const auto base_ord = count.value(base_ix, ix, last_column);

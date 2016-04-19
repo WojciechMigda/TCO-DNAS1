@@ -25,9 +25,7 @@
 #ifndef DNA_SEQUENCING_HPP_
 #define DNA_SEQUENCING_HPP_
 
-#include "BurrowsWheeler.hpp"
-//#include "gx/dna_nucleobase.hpp"
-//#include "gx/dna_nucleobase_istream.hpp"
+#include "BW/BurrowsWheeler.hpp"
 
 //#define BOOST_TOKENIZER
 #ifdef BOOST_TOKENIZER
@@ -70,96 +68,10 @@ std::string reverse_complement(const std::string & seq)
 }
 
 
-std::pair<std::string, std::string>
-read_pair_match(
-    const int chroma_id,
-    const std::string & head_name,
-    const std::string & head_read,
-    const std::string & tail_name,
-    const std::string & tail_read,
-    const BW::Context & bw_ctx,
-    const std::size_t offset
-    )
-{
-    std::vector<std::pair<int, int>> close_pairs;
-
-    const auto rev_tail_read = reverse_complement(tail_read);
-    const auto matched_tail_rev = BW::better_match(rev_tail_read, bw_ctx);
-    if (matched_tail_rev.size())
-    {
-        const auto matched_head_fwd = BW::better_match(head_read, bw_ctx);
-        if (matched_head_fwd.size())
-        {
-            for (const auto h_pos : matched_head_fwd)
-            {
-                for (const auto t_pos : matched_tail_rev)
-                {
-                    const auto dist = /*std::abs*/(t_pos - h_pos);
-                    if (dist >= 150 && dist <= 750)
-                    {
-                        close_pairs.emplace_back(h_pos, t_pos);
-                    }
-                }
-            }
-        }
-    }
-
-    const auto rev_head_read = reverse_complement(head_read);
-    const auto matched_head_rev = BW::better_match(rev_head_read, bw_ctx);
-    if (matched_head_rev.size())
-    {
-        const auto matched_tail_fwd = BW::better_match(tail_read, bw_ctx);
-        if (matched_tail_fwd.size())
-        {
-            for (const auto h_pos : matched_head_rev)
-            {
-                for (const auto t_pos : matched_tail_fwd)
-                {
-                    const auto dist = /*std::abs*/(h_pos - t_pos);
-                    if (dist >= 150 && dist <= 750)
-                    {
-                        close_pairs.emplace_back(-h_pos, -t_pos);
-                    }
-                }
-            }
-        }
-    }
-
-
-    std::string head_res;
-    std::string tail_res;
-
-    if (close_pairs.size() != 0)
-    {
-        std::sort(close_pairs.begin(), close_pairs.end(),
-            [](const std::pair<int, int> & lhs, const std::pair<int, int> & rhs)
-            {
-                return std::abs(lhs.first - lhs.second) < std::abs(rhs.first - rhs.second);
-            });
-
-        head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
-            std::to_string(std::abs(close_pairs.front().first) + 1 + offset) + ',' +
-            std::to_string(std::abs(close_pairs.front().first) + 150 + offset) + ',' +
-            (close_pairs.front().first > 0 ? '+' : '-') + ',' +
-            (close_pairs.front().first > 0 ? head_read : rev_head_read);
-        tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
-            std::to_string(std::abs(close_pairs.front().second) + 1 + offset) + ',' +
-            std::to_string(std::abs(close_pairs.front().second) + 150 + offset) + ',' +
-            (close_pairs.front().first > 0 ? '-' : '+') + ',' +
-            (close_pairs.front().first > 0 ? rev_tail_read : tail_read);
-    }
-    else
-    {
-        head_res = head_name + ',' + std::to_string(chroma_id) + "1,150,+," + head_read;
-        tail_res = tail_name + ',' + std::to_string(chroma_id) + "450,600,-," +  rev_tail_read;
-    }
-
-    return {head_res, tail_res};
-}
-
-
 struct DNASequencing
 {
+    enum { SKIP = 256 };
+
     void initTest()
     {
         m_curr_chromaid = -1;
@@ -286,9 +198,9 @@ suffarr           7        5     ? 11       10     (index w text)
 
             auto full_suffix_array = BW::full_suffix_array(subchroma);
             const auto last_col = BW::last_column(subchroma, full_suffix_array);
-            const auto count = BW::count(last_col, 256);
+            const auto count = BW::count(last_col, SKIP);
             const auto first_occ = BW::first_occurences(count, last_col);
-            const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, 256);
+            const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, SKIP);
             full_suffix_array.clear();
 
             m_chromatid_bw_contexts[m_curr_chromaid].emplace_back(
@@ -415,6 +327,7 @@ suffarr           7        5     ? 11       10     (index w text)
         ret.reserve(N);
 
         for (std::size_t ix{0}; ix < readName.size(); ix += 2)
+//        for (std::size_t ix{867671 * 2}; ix < readName.size(); ix += 2)
         {
             if (ix % 100 == 0)
             {
@@ -444,6 +357,10 @@ suffarr           7        5     ? 11       10     (index w text)
                 for (const auto & offset_bw_ctx : chroma_bw.second)
                 {
                     const auto offset = offset_bw_ctx.first;
+//                    if (offset == 228608364)
+//                    {
+//                        std::cerr << "Doing BW Context @ offset " << offset << std::endl;
+//                    }
                     const auto & bw_ctx = offset_bw_ctx.second;
 
                     const auto matched_head_fwd = BW::better_match(head_read_fwd, bw_ctx);
@@ -586,7 +503,7 @@ suffarr           7        5     ? 11       10     (index w text)
             ret.push_back(head_res);
             ret.push_back(tail_res);
         }
-        assert(ret.size() == N);
+//        assert(ret.size() == N);
 
 //        std::vector<std::string> ret(N, "");
 //        for (int i = 0; i < N; ++i)
