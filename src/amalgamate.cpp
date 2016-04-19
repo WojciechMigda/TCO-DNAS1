@@ -11,4 +11,6 @@
 //#include "boost/config/platform/linux.hpp"
 //#define BOOST_NO_PLATFORM_CONFIG
 
+#define NDEBUG
+
 #include "dna_sequencing.hpp"
