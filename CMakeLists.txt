@@ -35,4 +35,26 @@ add_executable( main
 
 target_link_libraries( main ${Boost_LIBRARIES} )
 
+set( CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake-modules )
+
+find_package( GTest REQUIRED )
+find_package( GMock REQUIRED )
+find_package( Threads REQUIRED )
+
+include_directories(
+    src
+    ${GMOCK_INCLUDE_DIR}
+    ${GTEST_INCLUDE_DIR}
+)
+
+add_executable( check
+    src/test.cpp
+)
+
+target_link_libraries( check
+    ${GTEST_BOTH_LIBRARIES}
+    ${GMOCK_BOTH_LIBRARIES}
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
 ################################################################################

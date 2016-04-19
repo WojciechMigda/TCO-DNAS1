@@ -8,7 +8,9 @@ install_manifest.txt
 .project
 .settings
 *.swp
+check
 main
 src/submission.cpp
 src/submission.o
 *.pyc
+*.log
