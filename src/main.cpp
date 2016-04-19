@@ -300,13 +300,6 @@ int main(int argc, char **argv)
 {
     const auto args = parse_options(argc, argv);
 
-
-    const int test_type = std::max(std::min(args.at("test-type").as<int>(), 2), 0);
-    const int test_number = test_type < 2 ? std::max(std::min(args.at("test-number").as<int>(), 10), 5) : 5;
-
-    std::cout << "[main] Executing test of difficulty " << test_type << std::endl;
-    std::cout << "[main]           test number: " << test_number << std::endl;
-
     const std::tuple<std::string, std::vector<int>, double, double> test_config[] =
     {
         std::make_tuple("small", std::vector<int>{20},
@@ -315,7 +308,16 @@ int main(int argc, char **argv)
                         -3.962, 0.5),
         std::make_tuple("large", std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
                         -2.710, 0.5),
+        std::make_tuple("debug", std::vector<int>{999},
+                        -3.962, 0.5),
     };
+
+    const int test_type = std::max(std::min(args.at("test-type").as<int>(), (int)(std::end(test_config) - std::begin(test_config))), 0);
+    const int test_number = test_type < 2 ? std::max(std::min(args.at("test-number").as<int>(), 10), 5) : 5;
+
+    std::cout << "[main] Executing test of difficulty " << test_type << std::endl;
+    std::cout << "[main]           test number: " << test_number << std::endl;
+
 
     const std::string input_prefix = "../data/" + std::get<0>(test_config[test_type]) + std::to_string(test_number) + ".";
     const std::string chroma_prefix = "../data/chromatid";
