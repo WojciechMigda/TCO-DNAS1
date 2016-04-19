@@ -31,6 +31,7 @@
 #include <string>
 #include <algorithm>
 
+using ::testing::ContainerEq;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::StrEq;
@@ -75,6 +76,26 @@ TEST(LastColumn, IsConstructedFromPattern304_6)
     const std::string res = BW::last_column(pattern, full_suffix_array);
 
     ASSERT_THAT(res, StrEq("T$TCAGATTCATC"));
+}
+
+
+TEST(PartialSuffixArray, IsExpandedToFull303_4)
+{
+    enum {SKIP = 3};
+
+    const std::string pattern("AATCGGGTTCAATCGGGGT$");
+    const std::vector<BW::pos_type> full_suffix_array = BW::full_suffix_array(pattern);
+    const std::string last_column = BW::last_column(pattern, full_suffix_array);
+    const auto count = BW::count(last_column, SKIP);
+    const auto first_occurrences = BW::first_occurences(count, last_column);
+    const auto partial_suffix_array = BW::partial_suffix_array(full_suffix_array, SKIP);
+
+    std::vector<BW::pos_type> res;
+    for (std::size_t ix{0}; ix < full_suffix_array.size(); ++ix)
+    {
+        res.push_back(partial_suffix_array.value(ix, last_column, count, first_occurrences));
+    }
+    ASSERT_THAT(res, ContainerEq(full_suffix_array));
 }
 
 
