@@ -152,7 +152,7 @@ struct DNASequencing
 
         for (std::size_t ix{0}; ix < readName.size(); ix += 2)
         {
-            if (ix % 100 == 0)
+            if (ix % 2000 == 0)
             {
                 std::cerr << "Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
             }
