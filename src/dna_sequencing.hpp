@@ -70,7 +70,7 @@ std::string reverse_complement(const std::string & seq)
 
 struct DNASequencing
 {
-    enum { SKIP = 256 };
+    enum { SKIP = 100 };
 
     void initTest()
     {
@@ -261,8 +261,10 @@ suffarr           7        5     ? 11       10     (index w text)
 
                 void next()
                 {
-                    m_curr_from = std::find_if(m_curr_to, m_end, [](const char what){return what != 'N';});
-                    m_curr_to = std::find_if(m_curr_from, m_end, [](const char what){return what == 'N';});
+                    m_curr_from = std::find_if(m_curr_to, m_end,
+                        [](const char what){return what == 'A' || what == 'C' || what == 'G' || what == 'T' || what == '$';});
+                    m_curr_to = std::find_if(m_curr_from, m_end,
+                        [](const char what){return !(what == 'A' || what == 'C' || what == 'G' || what == 'T' || what == '$');});
                 }
 
                 char const * const m_end;
@@ -327,11 +329,10 @@ suffarr           7        5     ? 11       10     (index w text)
         ret.reserve(N);
 
         for (std::size_t ix{0}; ix < readName.size(); ix += 2)
-//        for (std::size_t ix{867671 * 2}; ix < readName.size(); ix += 2)
         {
             if (ix % 100 == 0)
             {
-                std::cerr << "Doing read pair " << ix / 2 << " out of " << readName.size() / 2 << std::endl;
+                std::cerr << "Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
             }
 
             const auto & head_name = readName[ix];
@@ -357,10 +358,6 @@ suffarr           7        5     ? 11       10     (index w text)
                 for (const auto & offset_bw_ctx : chroma_bw.second)
                 {
                     const auto offset = offset_bw_ctx.first;
-//                    if (offset == 228608364)
-//                    {
-//                        std::cerr << "Doing BW Context @ offset " << offset << std::endl;
-//                    }
                     const auto & bw_ctx = offset_bw_ctx.second;
 
                     const auto matched_head_fwd = BW::better_match(head_read_fwd, bw_ctx);
