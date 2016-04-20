@@ -69,7 +69,8 @@ full_suffix_array(const SeqT & text)
             typename SeqT::const_pointer lhs = ctx->base + *a;
             typename SeqT::const_pointer rhs = ctx->base + *b;
 
-            const std::size_t how_much = ctx->sz - std::max(*a, *b);
+            //const std::size_t how_much = ctx->sz - std::max(*a, *b);
+            const std::size_t how_much = std::min(ctx->sz - std::max(*a, *b), 1000UL);
 
             const auto result = std::memcmp(lhs, rhs, how_much);
 
