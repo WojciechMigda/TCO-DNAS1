@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <cassert>
 
+
 namespace BW
 {
 
@@ -49,20 +50,31 @@ std::vector<pos_type>
 full_suffix_array(const SeqT & text)
 {
     std::vector<pos_type> sarray(text.size());
-//    std::vector<index_type> sarray;
-//    sarray.resize(text.size());
 
     std::iota(sarray.begin(), sarray.end(), 0);
 
-    std::sort(sarray.begin(), sarray.end(),
-        [&text](const pos_type lhix, const pos_type rhix) -> bool
-        {
-            typename SeqT::const_pointer lhs = text.data() + lhix;
-            typename SeqT::const_pointer rhs = text.data() + rhix;
+    struct sort_ctx_type
+    {
+        const char * base;
+        std::size_t sz;
+    } sort_ctx {text.data(), text.size()};
 
-            const auto result = std::memcmp(lhs, rhs, text.size() - std::max(lhix, rhix));
-            return result < 0;
-        });
+    qsort_r(sarray.data(), sarray.size(), sizeof (sarray[0]),
+        [](const void *va, const void * vb, void * vc)
+        {
+            const pos_type * a = (const pos_type *)va;
+            const pos_type * b = (const pos_type *)vb;
+            const sort_ctx_type * ctx = (const sort_ctx_type *)vc;
+
+            typename SeqT::const_pointer lhs = ctx->base + *a;
+            typename SeqT::const_pointer rhs = ctx->base + *b;
+
+            const std::size_t how_much = ctx->sz - std::max(*a, *b);
+
+            const auto result = std::memcmp(lhs, rhs, how_much);
+
+            return result > 0 ? 1 : result < 0 ? -1 : 0;
+        }, &sort_ctx);
 
     return sarray;
 }
@@ -186,8 +198,8 @@ struct Count
 template <typename SeqT>
 Count count(const SeqT & last_column, const std::size_t SKIP = 4)
 {
-    std::vector<std::vector<count_type>> result(5);
-    std::vector<count_type> stat(5);
+    std::vector<std::vector<count_type>> result(6);
+    std::vector<count_type> stat(6);
 
     for (auto & vec : result)
     {
@@ -198,14 +210,14 @@ Count count(const SeqT & last_column, const std::size_t SKIP = 4)
     {
         const auto item = last_column[ix];
 
-        for (int ix{0}; ix < 5; ++ix)
+        for (int ix{0}; ix < stat.size(); ++ix)
         {
             stat[ix] += (item == base_by_ix(ix));
         }
 
         if (ix % SKIP == (SKIP - 1))
         {
-            for (int ix{0}; ix < 5; ++ix)
+            for (int ix{0}; ix < result.size(); ++ix)
             {
                 result[ix].push_back(stat[ix]);
             }
@@ -220,13 +232,14 @@ template <typename SeqT>
 std::vector<std::size_t>
 first_occurences(const Count & count, const SeqT & last_column)
 {
-    std::vector<std::size_t> first_occ(5);
+    std::vector<std::size_t> first_occ(6);
 
     first_occ[ix_by_base('$')] = 0;
     first_occ[ix_by_base('A')] = 1;
     first_occ[ix_by_base('C')] = count.value(ix_by_base('A'), last_column.size(), last_column) + first_occ[ix_by_base('A')];
     first_occ[ix_by_base('G')] = count.value(ix_by_base('C'), last_column.size(), last_column) + first_occ[ix_by_base('C')];
-    first_occ[ix_by_base('T')] = count.value(ix_by_base('G'), last_column.size(), last_column) + first_occ[ix_by_base('G')];
+    first_occ[ix_by_base('N')] = count.value(ix_by_base('G'), last_column.size(), last_column) + first_occ[ix_by_base('G')];
+    first_occ[ix_by_base('T')] = count.value(ix_by_base('N'), last_column.size(), last_column) + first_occ[ix_by_base('N')];
 
     return first_occ;
 }
