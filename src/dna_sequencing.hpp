@@ -35,6 +35,7 @@
 #include <utility>
 #include <unordered_map>
 #include <cstddef>
+#include <valarray>
 
 
 #include <sys/time.h>
@@ -60,6 +61,27 @@ std::string reverse_complement(const std::string & seq)
     );
 
     return result;
+}
+
+
+double norm_pdf(double x, double mu, double sigma)
+{
+    const double arg = (x - mu) / sigma;
+    return std::exp(- arg * arg / 2) / (sigma * std::sqrt(2. * M_PI));
+}
+
+double score_close_pairs(const std::vector<std::tuple<int, int, int>> & close_pairs)
+{
+    std::valarray<double> probs(close_pairs.size());
+
+    std::transform(close_pairs.cbegin(), close_pairs.cend(), std::begin(probs),
+        [](const std::tuple<int, int, int> & rpair)
+        {
+            const auto prob = norm_pdf(std::abs(std::get<1>(rpair) - std::get<2>(rpair)), 450., 34.);
+            return prob;
+        });
+
+    return probs[0] / probs.sum();
 }
 
 
@@ -154,7 +176,7 @@ struct DNASequencing
         {
             if (ix % 2000 == 0)
             {
-                std::cerr << "Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
+                std::cerr << "[DNAS1] Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
             }
 
             const auto & head_name = readName[ix];
@@ -165,6 +187,15 @@ struct DNASequencing
             const auto tail_read_rev = reverse_complement(tail_read_fwd);
 
             //              <chroma_id, head_pos, tail_pos>
+            // range of distances between true positives: [263,814]
+            // distance = (tail_center - head_center)
+            enum
+            {
+                REAL_MIN_DIST = 263,
+                REAL_MAX_DIST = 814,
+                MIN_DIST = 450 - 300,
+                MAX_DIST = 450 + 300,
+            };
             std::vector<std::tuple<chrid_type, int, int>> close_pairs;
 
             //             <chroma_id, position>
@@ -188,7 +219,7 @@ struct DNASequencing
                     for (const auto t_pos : matched_tail_rev)
                     {
                         const auto dist = t_pos - h_pos;
-                        if (dist >= 150 && dist <= 750)
+                        if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
                         {
                             close_pairs.emplace_back(chroma_id, h_pos, t_pos);
                         }
@@ -200,7 +231,7 @@ struct DNASequencing
                     for (const auto t_pos : matched_tail_fwd)
                     {
                         const auto dist = h_pos - t_pos;
-                        if (dist >= 150 && dist <= 750)
+                        if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
                         {
                             close_pairs.emplace_back(chroma_id, -h_pos, -t_pos);
                         }
@@ -239,75 +270,98 @@ struct DNASequencing
                         return std::abs(dlhs - 450) < std::abs(drhs - 450);
                     });
 
+                const std::string confidence = std::to_string(score_close_pairs(close_pairs));
+//                const std::string confidence = std::to_string(1. / close_pairs.size());
+
                 head_res = head_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
                     std::to_string(std::abs(std::get<1>(close_pairs.front())) + 1) + ',' +
                     std::to_string(std::abs(std::get<1>(close_pairs.front())) + 150) + ',' +
-                    (std::get<1>(close_pairs.front()) > 0 ? '+' : '-') + ",1.00";
+                    (std::get<1>(close_pairs.front()) > 0 ? '+' : '-') + ',' + confidence;
 
                 tail_res = tail_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
                     std::to_string(std::abs(std::get<2>(close_pairs.front())) + 1) + ',' +
                     std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
-                    (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ",1.00";
+                    (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ',' + confidence;
             }
             else if (cumm_matched_head_fwd.size())
             {
                 const chrid_type chroma_id = std::get<0>(cumm_matched_head_fwd.front());
                 const BW::pos_type position = std::get<1>(cumm_matched_head_fwd.front());
 
+                const std::string confidence_h = "0.97"; // approx 0.9741749322548726
+                const std::string confidence_t = "0.49";
+//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
+//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
+
                 head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1) + ',' +
                     std::to_string(position + 150) + ',' +
-                    (position > 0 ? '+' : '-') + ",0.99";
+                    (position > 0 ? '+' : '-') + ',' + confidence_h;
 
                 tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 451) + ',' +
                     std::to_string(position + 600) + ',' +
-                    (position > 0 ? '-' : '+') + ",0.50";
+                    (position > 0 ? '-' : '+') + ',' + confidence_t;
             }
             else if (cumm_matched_tail_rev.size())
             {
                 const chrid_type chroma_id = std::get<0>(cumm_matched_tail_rev.front());
                 const BW::pos_type position = std::get<1>(cumm_matched_tail_rev.front());
 
+                const std::string confidence_h = "0.49";
+                const std::string confidence_t = "0.97";
+//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
+//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
+
                 head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1 - 450) + ',' +
                     std::to_string(position + 150 - 450) + ',' +
-                    (position > 0 ? '+' : '-') + ",0.50";
+                    (position > 0 ? '+' : '-') + ',' + confidence_h;
 
                 tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1) + ',' +
                     std::to_string(position + 150) + ',' +
-                    (position > 0 ? '-' : '+') + ",0.99";
+                    (position > 0 ? '-' : '+') + ',' + confidence_t;
             }
             else if (cumm_matched_head_rev.size())
             {
                 const chrid_type chroma_id = std::get<0>(cumm_matched_head_rev.front());
                 const BW::pos_type position = std::get<1>(cumm_matched_head_rev.front());
 
+                const std::string confidence_h = "0.97";
+                const std::string confidence_t = "0.49";
+//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
+//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
+
                 head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1) + ',' +
                     std::to_string(position + 150) + ',' +
-                    (position > 0 ? '-' : '+') + ",0.99";
+                    (position > 0 ? '-' : '+') + ',' + confidence_h;
 
                 tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1 - 450) + ',' +
                     std::to_string(position - 300) + ',' +
-                    (position > 0 ? '+' : '-') + ",0.50";
+                    (position > 0 ? '+' : '-') + ',' + confidence_t;
             }
             else if (cumm_matched_tail_fwd.size())
             {
                 const chrid_type chroma_id = std::get<0>(cumm_matched_tail_fwd.front());
                 const BW::pos_type position = std::get<1>(cumm_matched_tail_fwd.front());
 
+                const std::string confidence_h = "0.49";
+                const std::string confidence_t = "0.97";
+//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
+//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
+
                 head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1 + 450) + ',' +
                     std::to_string(position + 600) + ',' +
-                    (position > 0 ? '-' : '+') + ",0.50";
+                    (position > 0 ? '-' : '+') + ',' + confidence_h;
 
                 tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1) + ',' +
                     std::to_string(position + 150) + ',' +
-                    (position > 0 ? '+' : '-') + ",0.99";
+                    (position > 0 ? '+' : '-') + ',' + confidence_t;
             }
             else
             {
