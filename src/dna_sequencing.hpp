@@ -27,6 +27,9 @@
 
 
 #define STORE_COMPRESSED_TEXT
+#ifdef STORE_COMPRESSED_TEXT
+#define MATCH_BY_EDIT_DISTANCE
+#endif
 
 
 #include "BW/BurrowsWheeler.hpp"
@@ -114,12 +117,41 @@ std::size_t LevenshteinDistance(const std::string& s1, const std::string& s2)
     return dp[s1.length()][s2.length()];
 }
 
+typedef int chrid_type;
+
+std::size_t best_index_matched_by_edit_distance(
+    const std::vector<std::pair<chrid_type, BW::pos_type>> & matches,
+    std::pair<int, int> offsets,
+    const std::unordered_map<chrid_type, BW::CompressedText> & compressed_texts,
+    const std::string & other_kmer
+    )
+{
+    if (matches.size() == 1)
+    {
+        return 0;
+    }
+
+    std::vector<std::size_t> distances;
+    distances.reserve(matches.size());
+
+    for (const auto & matched : matches)
+    {
+        const auto chrid = matched.first;
+        const auto matched_pos = matched.second;
+
+        const auto & compressed = compressed_texts.at(chrid);
+        const std::string candidate_region = compressed.decompress(matched_pos + offsets.first, matched_pos + offsets.second);
+
+        distances.push_back(LevenshteinDistance(candidate_region, other_kmer));
+    }
+
+    return std::distance(distances.cbegin(), std::min_element(distances.cbegin(), distances.cend()));
+}
+
 
 struct DNASequencing
 {
     enum { SKIP = 100 };
-
-    typedef int chrid_type;
 
     void initTest()
     {
@@ -207,7 +239,7 @@ struct DNASequencing
 
         for (std::size_t ix{0}; ix < readName.size(); ix += 2)
         {
-            if (ix % 2000 == 0)
+            if (ix % 10000 == 0)
             {
                 std::cerr << "[DNAS1] Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
             }
@@ -318,8 +350,19 @@ struct DNASequencing
             }
             else if (cumm_matched_head_fwd.size())
             {
-                const chrid_type chroma_id = std::get<0>(cumm_matched_head_fwd.front());
-                const BW::pos_type position = std::get<1>(cumm_matched_head_fwd.front());
+#ifdef MATCH_BY_EDIT_DISTANCE
+                const std::size_t bext_ix = best_index_matched_by_edit_distance(
+                    cumm_matched_head_fwd,
+                    {450 - 34, 450 + 150 + 34},
+                    m_compressed_texts,
+                    tail_read_rev);
+#else
+                const std::size_t bext_ix = 0;
+#endif
+//                if (cumm_matched_head_fwd.size() > 1) std::cout << "More\n";
+                const auto & matched = cumm_matched_head_fwd[bext_ix];
+                const chrid_type chroma_id = std::get<0>(matched);
+                const BW::pos_type position = std::get<1>(matched);
 
                 const std::string confidence_h = "0.97"; // approx 0.9741749322548726
                 const std::string confidence_t = "0.49";
@@ -338,8 +381,19 @@ struct DNASequencing
             }
             else if (cumm_matched_tail_rev.size())
             {
-                const chrid_type chroma_id = std::get<0>(cumm_matched_tail_rev.front());
-                const BW::pos_type position = std::get<1>(cumm_matched_tail_rev.front());
+#ifdef MATCH_BY_EDIT_DISTANCE
+                const std::size_t bext_ix = best_index_matched_by_edit_distance(
+                    cumm_matched_tail_rev,
+                    {-450 - 34, -450 + 150 + 34},
+                    m_compressed_texts,
+                    head_read_fwd);
+#else
+                const std::size_t bext_ix = 0;
+#endif
+//                if (cumm_matched_tail_rev.size() > 1) std::cout << "More\n";
+                const auto & matched = cumm_matched_tail_rev[bext_ix];
+                const chrid_type chroma_id = std::get<0>(matched);
+                const BW::pos_type position = std::get<1>(matched);
 
                 const std::string confidence_h = "0.49";
                 const std::string confidence_t = "0.97";
@@ -358,8 +412,19 @@ struct DNASequencing
             }
             else if (cumm_matched_head_rev.size())
             {
-                const chrid_type chroma_id = std::get<0>(cumm_matched_head_rev.front());
-                const BW::pos_type position = std::get<1>(cumm_matched_head_rev.front());
+#ifdef MATCH_BY_EDIT_DISTANCE
+                const std::size_t bext_ix = best_index_matched_by_edit_distance(
+                    cumm_matched_head_rev,
+                    {-450 - 34, -450 + 150 + 34},
+                    m_compressed_texts,
+                    tail_read_fwd);
+#else
+                const std::size_t bext_ix = 0;
+#endif
+//                if (cumm_matched_head_rev.size() > 1) std::cout << "More\n";
+                const auto & matched = cumm_matched_head_rev[bext_ix];
+                const chrid_type chroma_id = std::get<0>(matched);
+                const BW::pos_type position = std::get<1>(matched);
 
                 const std::string confidence_h = "0.97";
                 const std::string confidence_t = "0.49";
@@ -378,13 +443,24 @@ struct DNASequencing
             }
             else if (cumm_matched_tail_fwd.size())
             {
-                const chrid_type chroma_id = std::get<0>(cumm_matched_tail_fwd.front());
-                const BW::pos_type position = std::get<1>(cumm_matched_tail_fwd.front());
+#ifdef MATCH_BY_EDIT_DISTANCE
+                const std::size_t bext_ix = best_index_matched_by_edit_distance(
+                    cumm_matched_tail_fwd,
+                    {450 - 34, 450 + 150 + 34},
+                    m_compressed_texts,
+                    head_read_rev);
+#else
+                const std::size_t bext_ix = 0;
+#endif
+//                if (cumm_matched_tail_fwd.size() > 1) std::cout << "More\n";
+                const auto & matched = cumm_matched_tail_fwd[bext_ix];
+                const chrid_type chroma_id = std::get<0>(matched);
+                const BW::pos_type position = std::get<1>(matched);
+//                const chrid_type chroma_id = std::get<0>(cumm_matched_tail_fwd.front());
+//                const BW::pos_type position = std::get<1>(cumm_matched_tail_fwd.front());
 
                 const std::string confidence_h = "0.49";
                 const std::string confidence_t = "0.97";
-//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
-//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
 
                 head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
                     std::to_string(position + 1 + 450) + ',' +
