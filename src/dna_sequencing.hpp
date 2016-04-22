@@ -90,6 +90,31 @@ double score_close_pairs(const std::vector<std::tuple<int, int, int>> & close_pa
 }
 
 
+std::size_t LevenshteinDistance(const std::string& s1, const std::string& s2)
+{
+    std::size_t dp[s1.length() + 1][s2.length() + 1];
+
+    for (std::size_t i = 0; i <= s1.length(); i++)
+    {
+        dp[i][0] = i;
+    }
+    for (std::size_t i = 0; i <= s2.length(); i++)
+    {
+        dp[0][i] = i;
+    }
+    for (std::size_t i = 1; i <= s1.length(); i++)
+    {
+        for (std::size_t j = 1; j <= s2.length(); j++)
+        {
+            dp[i][j] = std::min(dp[i - 1][j] + 1, dp[i][j - 1] + 1);
+            dp[i][j] = std::min(dp[i][j],
+                dp[i - 1][j - 1] + (s1[i - 1] == s2[j - 1] ? 0 : 1));
+        }
+    }
+    return dp[s1.length()][s2.length()];
+}
+
+
 struct DNASequencing
 {
     enum { SKIP = 100 };
