@@ -216,16 +216,16 @@ Count count(const SeqT & last_column, const std::size_t SKIP = 4)
     {
         const auto item = last_column[ix];
 
-        for (int ix{0}; ix < stat.size(); ++ix)
+        for (std::size_t six{0}; six < stat.size(); ++six)
         {
-            stat[ix] += (item == base_by_ix(ix));
+            stat[six] += (item == base_by_ix(six));
         }
 
         if (ix % SKIP == (SKIP - 1))
         {
-            for (int ix{0}; ix < result.size(); ++ix)
+            for (std::size_t rix{0}; rix < result.size(); ++rix)
             {
-                result[ix].push_back(stat[ix]);
+                result[rix].push_back(stat[rix]);
             }
         }
     }
