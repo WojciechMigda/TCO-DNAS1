@@ -101,7 +101,8 @@ SeqT last_column(const SeqT & text, const std::vector<pos_type> & full_suffix_ar
 }
 
 
-constexpr char base_by_ix(const std::size_t ix)
+constexpr inline
+char base_by_ix(const std::size_t ix)
 {
     return ((
         ((uint64_t)'N' << 40) |
@@ -115,7 +116,8 @@ constexpr char base_by_ix(const std::size_t ix)
 }
 
 
-constexpr char nucleobase_by_ix(const std::size_t ix)
+constexpr inline
+char nucleobase_by_ix(const std::size_t ix)
 {
     return ((
         ((uint32_t)'T' << 24) |
@@ -127,7 +129,8 @@ constexpr char nucleobase_by_ix(const std::size_t ix)
 }
 
 
-constexpr std::size_t ix_by_nucleobase(const char base)
+constexpr inline
+std::size_t ix_by_nucleobase(const char base)
 {
     return
         ((((0ULL << ('A' - 'A')) |
@@ -137,7 +140,8 @@ constexpr std::size_t ix_by_nucleobase(const char base)
 }
 
 
-constexpr std::size_t ix_by_base(const char base)
+constexpr inline
+std::size_t ix_by_base(const char base)
 {
     return
         base == '$' ?
@@ -157,6 +161,7 @@ struct Count
     const std::vector<std::vector<count_type>> m_counts;
 
     template <typename SeqT>
+    inline
     count_type value(
         const std::size_t base_ix,
         const std::size_t position,
@@ -347,6 +352,66 @@ better_match(const std::string & pattern, const Context & ctx)
     }
 
     return range;
+}
+
+
+struct CompressedText
+{
+    enum
+    {
+        WORD_SZ = 64,
+        BITS_PER_SYM = 3,
+        SYM_PER_WORD = WORD_SZ / BITS_PER_SYM,
+        MASK = (1 << BITS_PER_SYM) - 1,
+    };
+
+    inline
+    char operator[](std::size_t pos) const
+    {
+        return (m_bitset[pos / SYM_PER_WORD] >> ((pos % SYM_PER_WORD) * BITS_PER_SYM)) & MASK;
+    }
+
+    std::string decompress(std::size_t begin, std::size_t end) const
+    {
+        std::string result(end - begin, 0);
+        std::size_t six = 0;
+
+        for (std::size_t ix{begin}; ix < end; ++ix, ++six)
+        {
+            result[six] = base_by_ix((*this)[ix]);
+        }
+
+        return result;
+    }
+
+    const std::size_t m_sz;
+    const std::vector<uint64_t> m_bitset;
+};
+
+
+CompressedText compress_text(const std::string & text)
+{
+
+    std::vector<uint64_t> bitset((text.size() + CompressedText::SYM_PER_WORD - 1) / CompressedText::SYM_PER_WORD);
+    std::size_t bitoff = 0;
+    std::size_t word_ix = 0;
+
+    for (const char base : text)
+    {
+        const auto base_ix = ix_by_base(base);
+        bitset[word_ix] |= (base_ix << bitoff);
+        if (bitoff == CompressedText::BITS_PER_SYM * (CompressedText::SYM_PER_WORD - 1))
+        {
+            bitoff = 0;
+            ++word_ix;
+        }
+        else
+        {
+            bitoff += CompressedText::BITS_PER_SYM;
+        }
+    }
+
+    return CompressedText{text.size(), bitset};
 }
 
 

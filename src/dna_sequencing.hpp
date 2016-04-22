@@ -25,6 +25,10 @@
 #ifndef DNA_SEQUENCING_HPP_
 #define DNA_SEQUENCING_HPP_
 
+
+#define STORE_COMPRESSED_TEXT
+
+
 #include "BW/BurrowsWheeler.hpp"
 
 #include <string>
@@ -150,8 +154,11 @@ struct DNASequencing
         const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, SKIP);
         full_suffix_array.clear();
 
-
         m_bw_contexts.emplace(chromatidSequenceId, BW::Context{last_col, count, first_occ, partial_sufarr});
+
+#ifdef STORE_COMPRESSED_TEXT
+        m_compressed_texts.emplace(chromatidSequenceId, BW::compress_text(chromatid));
+#endif
 
         std::cerr << "[DNAS1] elapsed time (passReferenceGenome) " << timestamp() - time0 << " secs" << std::endl;
 
@@ -380,6 +387,9 @@ struct DNASequencing
     }
 
     std::unordered_map<chrid_type, BW::Context> m_bw_contexts;
+#ifdef STORE_COMPRESSED_TEXT
+    std::unordered_map<chrid_type, BW::CompressedText> m_compressed_texts;
+#endif
 };
 
 #endif /* DNA_SEQUENCING_HPP_ */

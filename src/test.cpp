@@ -99,6 +99,39 @@ TEST(PartialSuffixArray, IsExpandedToFull303_4)
 }
 
 
+TEST(CompressedText, IsDecompressed)
+{
+    const std::string instring = "ACATGCTACTTTAACGATAGCGGTAGAAACGATAGCGGTAGA$";
+
+    const auto compressed = BW::compress_text(instring);
+
+    const auto decompressed = compressed.decompress(4, instring.size() - 4);
+    ASSERT_EQ(decompressed, instring.substr(4, instring.size() - 4 - 4));
+}
+
+
+TEST(CompressedText, IsDecompressedFromBeginning)
+{
+    const std::string instring = "ACATGCTACTTTAACGATAGCGGTAGAAACGATAGCGGTAGA$";
+
+    const auto compressed = BW::compress_text(instring);
+
+    const auto decompressed = compressed.decompress(0, instring.size() - 3);
+    ASSERT_EQ(decompressed, instring.substr(0, instring.size() - 3));
+}
+
+
+TEST(CompressedText, IsDecompressedTillEnd)
+{
+    const std::string instring = "ACATGCTACTTTAACGATAGCGGTAGAAACGATAGCGGTAGA$";
+
+    const auto compressed = BW::compress_text(instring);
+
+    const auto decompressed = compressed.decompress(3, instring.size());
+    ASSERT_EQ(decompressed, instring.substr(3, instring.size() - 3));
+}
+
+
 int main(int argc, char ** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
