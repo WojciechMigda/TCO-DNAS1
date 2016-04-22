@@ -36,6 +36,7 @@
 #include <unordered_map>
 #include <cstddef>
 #include <valarray>
+#include <cmath>
 
 
 #include <sys/time.h>

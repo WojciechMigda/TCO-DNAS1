@@ -228,6 +228,18 @@ double score(
             const int start1 = position.from;
             r = (std::abs(start0 - start1) < MAX_POSITION_DIST) ? r : 0;
             const double confidence = std::stod(tokens[5]);
+//            if (/*std::abs(start0 - start1) >= MAX_POSITION_DIST*/r == 0 && confidence == 1.)
+//            {
+//                std::cerr << "Miss, confidence=1.0, id=" << tokens[0] << std::endl;
+//            }
+//            if (confidence == .5 || confidence == 0.6)
+//            {
+//                std::cerr << "single exact " << tokens[0] << std::endl;
+//                if (r == 0)
+//                {
+//                    std::cerr << "Miss, confidence=0.5/6" << std::endl;
+//                }
+//            }
             read_results.push_back(ReadResult{confidence, r});
             correct += r;
         }
@@ -303,6 +315,7 @@ int main(int argc, char **argv)
     const std::tuple<std::string, std::vector<int>, double, double> test_config[] =
     {
         std::make_tuple("small", std::vector<int>{20},
+//        std::make_tuple("small", std::vector<int>{15},
                         -3.392, 0.5),
         std::make_tuple("medium", std::vector<int>{1, 11, 20},
                         -3.962, 0.5),
