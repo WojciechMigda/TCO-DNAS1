@@ -28,7 +28,7 @@
 
 #define STORE_COMPRESSED_TEXT
 #ifdef STORE_COMPRESSED_TEXT
-#define MATCH_BY_EDIT_DISTANCE
+//#define MATCH_BY_EDIT_DISTANCE
 #endif
 
 
@@ -147,6 +147,38 @@ std::size_t best_index_matched_by_edit_distance(
 
     return std::distance(distances.cbegin(), std::min_element(distances.cbegin(), distances.cend()));
 }
+
+
+const auto make_scored_positions = [](
+    const std::vector<std::pair<chrid_type, BW::pos_type>> & cumm_matched,
+    const bool is_head, const bool is_fwd) -> std::pair<std::string, std::string>
+{
+    const std::size_t best_ix = 0;
+
+    const auto & matched = cumm_matched[best_ix];
+    const chrid_type chroma_id = std::get<0>(matched);
+    const BW::pos_type position = std::get<1>(matched);
+
+    const auto confidences = is_head ? std::make_pair("0.97", "0.49") : std::make_pair("0.49", "0.97");
+    const auto offsets =
+        is_head ?
+            (is_fwd ? std::make_pair(0, 450) : std::make_pair(0, -450)) :
+            (is_fwd ? std::make_pair(450, 0) : std::make_pair(-450, 0));
+    const auto markers = (is_head && is_fwd) || (!is_head && !is_fwd) ?
+        std::make_pair('+', '-') : std::make_pair('-', '+');
+
+    const std::string head_str = ',' + std::to_string(chroma_id) + ',' +
+        std::to_string(position + 1 + offsets.first) + ',' +
+        std::to_string(position + 150 + offsets.first) + ',' +
+        markers.first + ',' + confidences.first;
+
+    const std::string tail_str = ',' + std::to_string(chroma_id) + ',' +
+        std::to_string(position + 1 + offsets.second) + ',' +
+        std::to_string(position + 150 + offsets.second) + ',' +
+        markers.second + ',' + confidences.second;
+
+    return {head_str, tail_str};
+};
 
 
 struct DNASequencing
@@ -325,6 +357,8 @@ struct DNASequencing
             std::string head_res;
             std::string tail_res;
 
+            enum {EDIT_DIST_MARGIN = 60};
+
             if (close_pairs.size() != 0)
             {
                 std::sort(close_pairs.begin(), close_pairs.end(),
@@ -350,127 +384,27 @@ struct DNASequencing
             }
             else if (cumm_matched_head_fwd.size())
             {
-#ifdef MATCH_BY_EDIT_DISTANCE
-                const std::size_t bext_ix = best_index_matched_by_edit_distance(
-                    cumm_matched_head_fwd,
-                    {450 - 34, 450 + 150 + 34},
-                    m_compressed_texts,
-                    tail_read_rev);
-#else
-                const std::size_t bext_ix = 0;
-#endif
-//                if (cumm_matched_head_fwd.size() > 1) std::cout << "More\n";
-                const auto & matched = cumm_matched_head_fwd[bext_ix];
-                const chrid_type chroma_id = std::get<0>(matched);
-                const BW::pos_type position = std::get<1>(matched);
-
-                const std::string confidence_h = "0.97"; // approx 0.9741749322548726
-                const std::string confidence_t = "0.49";
-//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
-//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
-
-                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1) + ',' +
-                    std::to_string(position + 150) + ',' +
-                    (position > 0 ? '+' : '-') + ',' + confidence_h;
-
-                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 451) + ',' +
-                    std::to_string(position + 600) + ',' +
-                    (position > 0 ? '-' : '+') + ',' + confidence_t;
+                const auto scored_positions = make_scored_positions(cumm_matched_head_fwd, true, true);
+                head_res = head_name + scored_positions.first;
+                tail_res = tail_name + scored_positions.second;
             }
             else if (cumm_matched_tail_rev.size())
             {
-#ifdef MATCH_BY_EDIT_DISTANCE
-                const std::size_t bext_ix = best_index_matched_by_edit_distance(
-                    cumm_matched_tail_rev,
-                    {-450 - 34, -450 + 150 + 34},
-                    m_compressed_texts,
-                    head_read_fwd);
-#else
-                const std::size_t bext_ix = 0;
-#endif
-//                if (cumm_matched_tail_rev.size() > 1) std::cout << "More\n";
-                const auto & matched = cumm_matched_tail_rev[bext_ix];
-                const chrid_type chroma_id = std::get<0>(matched);
-                const BW::pos_type position = std::get<1>(matched);
-
-                const std::string confidence_h = "0.49";
-                const std::string confidence_t = "0.97";
-//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
-//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
-
-                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1 - 450) + ',' +
-                    std::to_string(position + 150 - 450) + ',' +
-                    (position > 0 ? '+' : '-') + ',' + confidence_h;
-
-                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1) + ',' +
-                    std::to_string(position + 150) + ',' +
-                    (position > 0 ? '-' : '+') + ',' + confidence_t;
+                const auto scored_positions = make_scored_positions(cumm_matched_tail_rev, false, false);
+                head_res = head_name + scored_positions.first;
+                tail_res = tail_name + scored_positions.second;
             }
             else if (cumm_matched_head_rev.size())
             {
-#ifdef MATCH_BY_EDIT_DISTANCE
-                const std::size_t bext_ix = best_index_matched_by_edit_distance(
-                    cumm_matched_head_rev,
-                    {-450 - 34, -450 + 150 + 34},
-                    m_compressed_texts,
-                    tail_read_fwd);
-#else
-                const std::size_t bext_ix = 0;
-#endif
-//                if (cumm_matched_head_rev.size() > 1) std::cout << "More\n";
-                const auto & matched = cumm_matched_head_rev[bext_ix];
-                const chrid_type chroma_id = std::get<0>(matched);
-                const BW::pos_type position = std::get<1>(matched);
-
-                const std::string confidence_h = "0.97";
-                const std::string confidence_t = "0.49";
-//                const std::string confidence_h = std::to_string(1. / cumm_matched_head_fwd.size());
-//                const std::string confidence_t = std::to_string(1. / cumm_matched_head_fwd.size());
-
-                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1) + ',' +
-                    std::to_string(position + 150) + ',' +
-                    (position > 0 ? '-' : '+') + ',' + confidence_h;
-
-                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1 - 450) + ',' +
-                    std::to_string(position - 300) + ',' +
-                    (position > 0 ? '+' : '-') + ',' + confidence_t;
+                const auto scored_positions = make_scored_positions(cumm_matched_head_rev, true, false);
+                head_res = head_name + scored_positions.first;
+                tail_res = tail_name + scored_positions.second;
             }
             else if (cumm_matched_tail_fwd.size())
             {
-#ifdef MATCH_BY_EDIT_DISTANCE
-                const std::size_t bext_ix = best_index_matched_by_edit_distance(
-                    cumm_matched_tail_fwd,
-                    {450 - 34, 450 + 150 + 34},
-                    m_compressed_texts,
-                    head_read_rev);
-#else
-                const std::size_t bext_ix = 0;
-#endif
-//                if (cumm_matched_tail_fwd.size() > 1) std::cout << "More\n";
-                const auto & matched = cumm_matched_tail_fwd[bext_ix];
-                const chrid_type chroma_id = std::get<0>(matched);
-                const BW::pos_type position = std::get<1>(matched);
-//                const chrid_type chroma_id = std::get<0>(cumm_matched_tail_fwd.front());
-//                const BW::pos_type position = std::get<1>(cumm_matched_tail_fwd.front());
-
-                const std::string confidence_h = "0.49";
-                const std::string confidence_t = "0.97";
-
-                head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1 + 450) + ',' +
-                    std::to_string(position + 600) + ',' +
-                    (position > 0 ? '-' : '+') + ',' + confidence_h;
-
-                tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
-                    std::to_string(position + 1) + ',' +
-                    std::to_string(position + 150) + ',' +
-                    (position > 0 ? '+' : '-') + ',' + confidence_t;
+                const auto scored_positions = make_scored_positions(cumm_matched_tail_fwd, false, true);
+                head_res = head_name + scored_positions.first;
+                tail_res = tail_name + scored_positions.second;
             }
             else
             {
