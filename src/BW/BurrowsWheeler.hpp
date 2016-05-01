@@ -36,6 +36,7 @@
 #include <unordered_map>
 #include <cstdint>
 #include <cassert>
+#include <set>
 
 
 namespace BW
@@ -412,6 +413,83 @@ CompressedText compress_text(const std::string & text)
     }
 
     return CompressedText{text.size(), bitset};
+}
+
+
+std::vector<std::pair<pos_type, std::size_t>>
+approximate_better_match(
+    const std::string & pattern,
+    const Context & ctx,
+    const CompressedText & comptext,
+    std::size_t dist)
+{
+    struct DsetGen
+    {
+        DsetGen(const std::string & word, const std::size_t dist) :
+            m_word(word)
+        {
+            const auto L = word.size();
+
+            // linspace
+            {
+                const float step = L / (dist + 1.f);
+                m_splits.push_back(0);
+                for (std::size_t ix = 1; ix <= dist; ++ix)
+                {
+                    m_splits.push_back(ix * step);
+                }
+                m_splits.push_back(L);
+            }
+        }
+
+        std::pair<std::string, std::size_t> yield()
+        {
+            if (m_splits.size() >= 2)
+            {
+                const auto back = m_splits.back();
+                m_splits.pop_back();
+
+                return {m_word.substr(m_splits.back(), back - m_splits.back()), m_splits.back()};
+            }
+            else
+            {
+                return {"", std::string::npos};
+            }
+        }
+
+        const std::string & m_word;
+        std::vector<std::size_t> m_splits;
+    };
+
+
+    std::set<std::pair<pos_type, std::size_t>> grand_matched;
+    auto dset_gen = DsetGen(pattern, dist);
+    for (auto dset = dset_gen.yield(); dset.second != std::string::npos; dset = dset_gen.yield())
+    {
+        for (const auto ix : better_match(dset.first, ctx))
+        {
+            const auto begin = ix - dset.second;
+            const auto end = begin + pattern.size();
+            if (begin >= 0 && end <= ctx.last_column.size())
+            {
+                const auto text = comptext.decompress(begin, end);
+                const auto real_dist = std::inner_product(text.cbegin(), text.cend(), pattern.cbegin(),
+                    0u,
+                    [](const std::size_t acc, const std::size_t val){return acc + val;},
+                    [](const char lhs, const char rhs){return lhs != rhs;}
+                );
+                if (real_dist <= dist)
+                {
+                    grand_matched.emplace(begin, real_dist);
+                }
+            }
+        }
+    }
+    // TODO: unordered map
+
+    const std::vector<std::pair<pos_type, std::size_t>> range(grand_matched.cbegin(), grand_matched.cend());
+    return range;
+//    return grand_matched;
 }
 
 
