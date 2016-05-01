@@ -78,12 +78,30 @@ double norm_pdf(double x, double mu, double sigma)
     return std::exp(- arg * arg / 2) / (sigma * std::sqrt(2. * M_PI));
 }
 
-double score_close_pairs(const std::vector<std::tuple<int, int, int>> & close_pairs)
+typedef int chrid_type;
+
+double score_close_pairs(const std::vector<std::tuple<chrid_type, int, int>> & close_pairs)
 {
     std::valarray<double> probs(close_pairs.size());
 
     std::transform(close_pairs.cbegin(), close_pairs.cend(), std::begin(probs),
         [](const std::tuple<int, int, int> & rpair)
+        {
+            const auto prob = norm_pdf(std::abs(std::get<1>(rpair) - std::get<2>(rpair)), 450., 34.);
+            return prob;
+        });
+
+    return probs[0] / probs.sum();
+}
+
+
+double score_close_pairs(const std::vector<std::tuple<chrid_type, int, int, std::size_t>> & close_pairs)
+{
+    // TODO: score is irrespective of cummulative distance (std::get<3>)
+    std::valarray<double> probs(close_pairs.size());
+
+    std::transform(close_pairs.cbegin(), close_pairs.cend(), std::begin(probs),
+        [](const std::tuple<int, int, int, std::size_t> & rpair)
         {
             const auto prob = norm_pdf(std::abs(std::get<1>(rpair) - std::get<2>(rpair)), 450., 34.);
             return prob;
@@ -116,8 +134,6 @@ std::size_t LevenshteinDistance(const std::string& s1, const std::string& s2)
     }
     return dp[s1.length()][s2.length()];
 }
-
-typedef int chrid_type;
 
 std::size_t best_index_matched_by_edit_distance(
     const std::vector<std::pair<chrid_type, BW::pos_type>> & matches,
@@ -262,169 +278,271 @@ struct DNASequencing
         double normA,
         double normS,
         const std::vector<std::string> & readName,
-        const std::vector<std::string> & readSequence)
-    {
-        const auto time0 = timestamp();
-
-        std::vector<std::string> ret;
-        ret.reserve(N);
-
-        for (std::size_t ix{0}; ix < readName.size(); ix += 2)
-        {
-            if (ix % 10000 == 0)
-            {
-                std::cerr << "[DNAS1] Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
-            }
-
-            const auto & head_name = readName[ix];
-            const auto & tail_name = readName[ix + 1];
-            const auto & head_read_fwd = readSequence[ix];
-            const auto & tail_read_fwd = readSequence[ix + 1];
-            const auto head_read_rev = reverse_complement(head_read_fwd);
-            const auto tail_read_rev = reverse_complement(tail_read_fwd);
-
-            //              <chroma_id, head_pos, tail_pos>
-            // range of distances between true positives: [263,814]
-            // distance = (tail_center - head_center)
-            enum
-            {
-                REAL_MIN_DIST = 263,
-                REAL_MAX_DIST = 814,
-                MIN_DIST = 450 - 300,
-                MAX_DIST = 450 + 300,
-            };
-            std::vector<std::tuple<chrid_type, int, int>> close_pairs;
-
-            //             <chroma_id, position>
-            std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_head_fwd;
-            std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_head_rev;
-            std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_tail_fwd;
-            std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_tail_rev;
-
-            for (const auto & id_bw_context : m_bw_contexts)
-            {
-                const auto chroma_id = id_bw_context.first;
-                const auto & bw_ctx = id_bw_context.second;
-
-                const auto matched_head_fwd = BW::better_match(head_read_fwd, bw_ctx);
-                const auto matched_head_rev = BW::better_match(head_read_rev, bw_ctx);
-                const auto matched_tail_fwd = BW::better_match(tail_read_fwd, bw_ctx);
-                const auto matched_tail_rev = BW::better_match(tail_read_rev, bw_ctx);
-
-                for (const auto h_pos : matched_head_fwd)
-                {
-                    for (const auto t_pos : matched_tail_rev)
-                    {
-                        const auto dist = t_pos - h_pos;
-                        if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
-                        {
-                            close_pairs.emplace_back(chroma_id, h_pos, t_pos);
-                        }
-                    }
-                }
-
-                for (const auto h_pos : matched_head_rev)
-                {
-                    for (const auto t_pos : matched_tail_fwd)
-                    {
-                        const auto dist = h_pos - t_pos;
-                        if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
-                        {
-                            close_pairs.emplace_back(chroma_id, -h_pos, -t_pos);
-                        }
-                    }
-                }
-
-                auto append = [](std::vector<std::pair<chrid_type, BW::pos_type>> & cumm,
-                                 const std::vector<BW::pos_type> & src,
-                                 chrid_type chroma_id)
-                {
-                    cumm.reserve(cumm.size() + src.size());
-                    std::transform(src.cbegin(), src.cend(), std::back_inserter(cumm),
-                        [&chroma_id](const BW::pos_type what) -> std::pair<chrid_type, BW::pos_type>
-                        {
-                            return {chroma_id, what};
-                        }
-                    );
-                };
-                append(cumm_matched_head_fwd, matched_head_fwd, chroma_id);
-                append(cumm_matched_head_rev, matched_head_rev, chroma_id);
-                append(cumm_matched_tail_fwd, matched_tail_fwd, chroma_id);
-                append(cumm_matched_tail_rev, matched_tail_rev, chroma_id);
-            }
-
-
-            std::string head_res;
-            std::string tail_res;
-
-            enum {EDIT_DIST_MARGIN = 60};
-
-            if (close_pairs.size() != 0)
-            {
-                std::sort(close_pairs.begin(), close_pairs.end(),
-                    [](const std::tuple<chrid_type, int, int> & lhs, const std::tuple<chrid_type, int, int> & rhs)
-                    {
-                        const auto dlhs = std::abs(std::get<1>(lhs) - std::get<2>(lhs));
-                        const auto drhs = std::abs(std::get<1>(rhs) - std::get<2>(rhs));
-                        return std::abs(dlhs - 450) < std::abs(drhs - 450);
-                    });
-
-                const std::string confidence = std::to_string(score_close_pairs(close_pairs));
-//                const std::string confidence = std::to_string(1. / close_pairs.size());
-
-                head_res = head_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
-                    std::to_string(std::abs(std::get<1>(close_pairs.front())) + 1) + ',' +
-                    std::to_string(std::abs(std::get<1>(close_pairs.front())) + 150) + ',' +
-                    (std::get<1>(close_pairs.front()) > 0 ? '+' : '-') + ',' + confidence;
-
-                tail_res = tail_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
-                    std::to_string(std::abs(std::get<2>(close_pairs.front())) + 1) + ',' +
-                    std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
-                    (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ',' + confidence;
-            }
-            else if (cumm_matched_head_fwd.size())
-            {
-                const auto scored_positions = make_scored_positions(cumm_matched_head_fwd, true, true);
-                head_res = head_name + scored_positions.first;
-                tail_res = tail_name + scored_positions.second;
-            }
-            else if (cumm_matched_tail_rev.size())
-            {
-                const auto scored_positions = make_scored_positions(cumm_matched_tail_rev, false, false);
-                head_res = head_name + scored_positions.first;
-                tail_res = tail_name + scored_positions.second;
-            }
-            else if (cumm_matched_head_rev.size())
-            {
-                const auto scored_positions = make_scored_positions(cumm_matched_head_rev, true, false);
-                head_res = head_name + scored_positions.first;
-                tail_res = tail_name + scored_positions.second;
-            }
-            else if (cumm_matched_tail_fwd.size())
-            {
-                const auto scored_positions = make_scored_positions(cumm_matched_tail_fwd, false, true);
-                head_res = head_name + scored_positions.first;
-                tail_res = tail_name + scored_positions.second;
-            }
-            else
-            {
-                head_res = head_name + ",20,1,150,+,0.00";
-                tail_res = tail_name + ",20,450,600,-,0.00";
-            }
-
-            ret.push_back(head_res);
-            ret.push_back(tail_res);
-        }
-
-        std::cerr << "[DNAS1] elapsed time (getAlignment) " << timestamp() - time0 << " secs" << std::endl;
-
-        return ret;
-    }
+        const std::vector<std::string> & readSequence);
 
     std::unordered_map<chrid_type, BW::Context> m_bw_contexts;
 #ifdef STORE_COMPRESSED_TEXT
     std::unordered_map<chrid_type, BW::CompressedText> m_compressed_texts;
 #endif
 };
+
+
+std::vector<std::string>
+DNASequencing::getAlignment(
+    int N,
+    double normA,
+    double normS,
+    const std::vector<std::string> & readName,
+    const std::vector<std::string> & readSequence)
+{
+    const auto time0 = timestamp();
+
+    std::vector<std::string> ret;
+    ret.reserve(N);
+
+    for (std::size_t ix{0}; ix < readName.size(); ix += 2)
+    {
+        if (ix % 10000 == 0)
+        {
+            std::cerr << "[DNAS1] Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
+        }
+
+        const auto & head_name = readName[ix];
+        const auto & tail_name = readName[ix + 1];
+        const auto & head_read_fwd = readSequence[ix];
+        const auto & tail_read_fwd = readSequence[ix + 1];
+        const auto head_read_rev = reverse_complement(head_read_fwd);
+        const auto tail_read_rev = reverse_complement(tail_read_fwd);
+
+        //              <chroma_id, head_pos, tail_pos>
+        // range of distances between true positives: [263,814]
+        // distance = (tail_center - head_center)
+        enum
+        {
+            REAL_MIN_DIST = 263,
+            REAL_MAX_DIST = 814,
+            MIN_DIST = 450 - 300,
+            MAX_DIST = 450 + 300,
+        };
+        std::vector<std::tuple<chrid_type, int, int>> close_pairs;
+
+        //             <chroma_id, position>
+        std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_head_fwd;
+        std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_head_rev;
+        std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_tail_fwd;
+        std::vector<std::pair<chrid_type, BW::pos_type>> cumm_matched_tail_rev;
+
+        for (const auto & id_bw_context : m_bw_contexts)
+        {
+            const auto chroma_id = id_bw_context.first;
+            const auto & bw_ctx = id_bw_context.second;
+
+            const auto matched_head_fwd = BW::better_match(head_read_fwd, bw_ctx);
+            const auto matched_head_rev = BW::better_match(head_read_rev, bw_ctx);
+            const auto matched_tail_fwd = BW::better_match(tail_read_fwd, bw_ctx);
+            const auto matched_tail_rev = BW::better_match(tail_read_rev, bw_ctx);
+
+            for (const auto h_pos : matched_head_fwd)
+            {
+                for (const auto t_pos : matched_tail_rev)
+                {
+                    const auto dist = t_pos - h_pos;
+                    if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+                    {
+                        close_pairs.emplace_back(chroma_id, h_pos, t_pos);
+                    }
+                }
+            }
+
+            for (const auto h_pos : matched_head_rev)
+            {
+                for (const auto t_pos : matched_tail_fwd)
+                {
+                    const auto dist = h_pos - t_pos;
+                    if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+                    {
+                        close_pairs.emplace_back(chroma_id, -h_pos, -t_pos);
+                    }
+                }
+            }
+
+            auto append = [](std::vector<std::pair<chrid_type, BW::pos_type>> & cumm,
+                             const std::vector<BW::pos_type> & src,
+                             chrid_type chroma_id)
+            {
+                cumm.reserve(cumm.size() + src.size());
+                std::transform(src.cbegin(), src.cend(), std::back_inserter(cumm),
+                    [&chroma_id](const BW::pos_type what) -> std::pair<chrid_type, BW::pos_type>
+                    {
+                        return {chroma_id, what};
+                    }
+                );
+            };
+            append(cumm_matched_head_fwd, matched_head_fwd, chroma_id);
+            append(cumm_matched_head_rev, matched_head_rev, chroma_id);
+            append(cumm_matched_tail_fwd, matched_tail_fwd, chroma_id);
+            append(cumm_matched_tail_rev, matched_tail_rev, chroma_id);
+        }
+
+
+        std::string head_res;
+        std::string tail_res;
+
+        if (close_pairs.size() != 0)
+        {
+            std::sort(close_pairs.begin(), close_pairs.end(),
+                [](const std::tuple<chrid_type, int, int> & lhs, const std::tuple<chrid_type, int, int> & rhs)
+                {
+                    const auto dlhs = std::abs(std::get<1>(lhs) - std::get<2>(lhs));
+                    const auto drhs = std::abs(std::get<1>(rhs) - std::get<2>(rhs));
+                    return std::abs(dlhs - 450) < std::abs(drhs - 450);
+                });
+
+            const std::string confidence = std::to_string(score_close_pairs(close_pairs));
+//                const std::string confidence = std::to_string(1. / close_pairs.size());
+
+            head_res = head_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
+                std::to_string(std::abs(std::get<1>(close_pairs.front())) + 1) + ',' +
+                std::to_string(std::abs(std::get<1>(close_pairs.front())) + 150) + ',' +
+                (std::get<1>(close_pairs.front()) > 0 ? '+' : '-') + ',' + confidence;
+
+            tail_res = tail_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
+                std::to_string(std::abs(std::get<2>(close_pairs.front())) + 1) + ',' +
+                std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
+                (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ',' + confidence;
+        }
+        else if (cumm_matched_head_fwd.size() == 1)
+        {
+            const auto scored_positions = make_scored_positions(cumm_matched_head_fwd, true, true);
+            head_res = head_name + scored_positions.first;
+            tail_res = tail_name + scored_positions.second;
+        }
+        else if (cumm_matched_tail_rev.size() == 1)
+        {
+            const auto scored_positions = make_scored_positions(cumm_matched_tail_rev, false, false);
+            head_res = head_name + scored_positions.first;
+            tail_res = tail_name + scored_positions.second;
+        }
+        else if (cumm_matched_head_rev.size() == 1)
+        {
+            const auto scored_positions = make_scored_positions(cumm_matched_head_rev, true, false);
+            head_res = head_name + scored_positions.first;
+            tail_res = tail_name + scored_positions.second;
+        }
+        else if (cumm_matched_tail_fwd.size() == 1)
+        {
+            const auto scored_positions = make_scored_positions(cumm_matched_tail_fwd, false, true);
+            head_res = head_name + scored_positions.first;
+            tail_res = tail_name + scored_positions.second;
+        }
+        else
+        {
+            if (0)
+            {
+                std::vector<std::tuple<chrid_type, int, int, std::size_t>> close_pairs;
+//                cumm_matched_head_fwd.clear();
+//                cumm_matched_head_rev.clear();
+//                cumm_matched_tail_fwd.clear();
+//                cumm_matched_tail_rev.clear();
+
+                for (const auto & id_bw_context : m_bw_contexts)
+                {
+                    const auto chroma_id = id_bw_context.first;
+                    const auto & bw_ctx = id_bw_context.second;
+
+                    const auto matched_head_fwd = BW::approximate_better_match(head_read_fwd, bw_ctx, m_compressed_texts.at(chroma_id), 1);
+                    const auto matched_head_rev = BW::approximate_better_match(head_read_rev, bw_ctx, m_compressed_texts.at(chroma_id), 1);
+                    const auto matched_tail_fwd = BW::approximate_better_match(tail_read_fwd, bw_ctx, m_compressed_texts.at(chroma_id), 1);
+                    const auto matched_tail_rev = BW::approximate_better_match(tail_read_rev, bw_ctx, m_compressed_texts.at(chroma_id), 1);
+
+                    for (const auto h_pos_dist : matched_head_fwd)
+                    {
+                        for (const auto t_pos_dist : matched_tail_rev)
+                        {
+                            const auto dist = t_pos_dist.first - h_pos_dist.first;
+                            if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+                            {
+                                close_pairs.emplace_back(chroma_id, h_pos_dist.first, t_pos_dist.first, h_pos_dist.second + t_pos_dist.second);
+                            }
+                        }
+                    }
+
+                    for (const auto h_pos_dist : matched_head_rev)
+                    {
+                        for (const auto t_pos_dist : matched_tail_fwd)
+                        {
+                            const auto dist = h_pos_dist.first - t_pos_dist.first;
+                            if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+                            {
+                                close_pairs.emplace_back(chroma_id, -h_pos_dist.first, -t_pos_dist.first, h_pos_dist.second + t_pos_dist.second);
+                            }
+                        }
+                    }
+
+//                    auto append = [](std::vector<std::pair<chrid_type, BW::pos_type>> & cumm,
+//                                     const std::vector<BW::pos_type> & src,
+//                                     chrid_type chroma_id)
+//                    {
+//                        cumm.reserve(cumm.size() + src.size());
+//                        std::transform(src.cbegin(), src.cend(), std::back_inserter(cumm),
+//                            [&chroma_id](const BW::pos_type what) -> std::pair<chrid_type, BW::pos_type>
+//                            {
+//                                return {chroma_id, what};
+//                            }
+//                        );
+//                    };
+//                    append(cumm_matched_head_fwd, matched_head_fwd, chroma_id);
+//                    append(cumm_matched_head_rev, matched_head_rev, chroma_id);
+//                    append(cumm_matched_tail_fwd, matched_tail_fwd, chroma_id);
+//                    append(cumm_matched_tail_rev, matched_tail_rev, chroma_id);
+                }
+
+                if (close_pairs.size() != 0)
+                {
+                    std::sort(close_pairs.begin(), close_pairs.end(),
+                        [](const std::tuple<chrid_type, int, int, std::size_t> & lhs,
+                            const std::tuple<chrid_type, int, int, std::size_t> & rhs)
+                        {
+                            const auto dlhs = std::abs(std::get<1>(lhs) - std::get<2>(lhs));
+                            const auto drhs = std::abs(std::get<1>(rhs) - std::get<2>(rhs));
+                            if (std::get<3>(lhs) == std::get<3>(rhs))
+                            {
+                                return std::abs(dlhs - 450) < std::abs(drhs - 450);
+                            }
+                            else
+                            {
+                                return std::get<3>(lhs) < std::get<3>(rhs);
+                            }
+                        });
+
+                    const std::string confidence = std::to_string(score_close_pairs(close_pairs));
+
+                    head_res = head_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
+                        std::to_string(std::abs(std::get<1>(close_pairs.front())) + 1) + ',' +
+                        std::to_string(std::abs(std::get<1>(close_pairs.front())) + 150) + ',' +
+                        (std::get<1>(close_pairs.front()) > 0 ? '+' : '-') + ',' + confidence;
+
+                    tail_res = tail_name + ',' + std::to_string(std::get<0>(close_pairs.front())) + ',' +
+                        std::to_string(std::abs(std::get<2>(close_pairs.front())) + 1) + ',' +
+                        std::to_string(std::abs(std::get<2>(close_pairs.front())) + 150) + ',' +
+                        (std::get<2>(close_pairs.front()) > 0 ? '-' : '+') + ',' + confidence;
+                }
+            }
+
+            if (head_res.empty() && tail_res.empty())
+            {
+                head_res = head_name + ",20,1,150,+,0.00";
+                tail_res = tail_name + ",20,450,600,-,0.00";
+            }
+        }
+
+        ret.push_back(head_res);
+        ret.push_back(tail_res);
+    }
+
+    std::cerr << "[DNAS1] elapsed time (getAlignment) " << timestamp() - time0 << " secs" << std::endl;
+
+    return ret;
+}
 
 #endif /* DNA_SEQUENCING_HPP_ */
