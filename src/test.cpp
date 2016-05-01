@@ -132,6 +132,27 @@ TEST(CompressedText, IsDecompressedTillEnd)
 }
 
 
+//TEST(ApproximateBWMatch, FindsApproximateMatches)
+//{
+//    enum {SKIP = 3};
+//
+//    const std::string pattern("ACATGCTACTTT$");
+//    const std::vector<BW::pos_type> full_suffix_array = BW::full_suffix_array(pattern);
+//
+//    const std::string last_column = BW::last_column(pattern, full_suffix_array);
+//    const auto count = BW::count(last_column, SKIP);
+//    const auto first_occurrences = BW::first_occurences(count, last_column);
+//    const auto partial_suffix_array = BW::partial_suffix_array(full_suffix_array, SKIP);
+//    const auto compressed = BW::compress_text(pattern);
+//
+//    const auto matches = BW::approximate_better_match("ATT",
+//        BW::Context{last_column, count, first_occurrences, partial_suffix_array},
+//        compressed,
+//        1);
+//    ASSERT_THAT(matches, ElementsAreArray({2, 7, 8, 9}));
+//}
+
+
 int main(int argc, char ** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
