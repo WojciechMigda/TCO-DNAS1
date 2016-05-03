@@ -158,8 +158,10 @@ typedef uint32_t count_type;
 
 struct Count
 {
-    const std::size_t m_skip;
-    const std::vector<std::vector<count_type>> m_counts;
+    //const
+    std::size_t m_skip;
+    //const
+    std::vector<std::vector<count_type>> m_counts;
 
     template <typename SeqT>
     inline
@@ -254,8 +256,10 @@ first_occurences(const Count & count, const SeqT & last_column)
 
 struct PartialSuffixArray
 {
-    const std::size_t m_skip;
-    const std::unordered_map<pos_type, pos_type> m_sufarr;
+    //const
+    std::size_t m_skip;
+    //const
+    std::unordered_map<pos_type, pos_type> m_sufarr;
 
     template <typename SeqT>
     pos_type value(
@@ -302,11 +306,103 @@ partial_suffix_array(const std::vector<pos_type> & full_suffix_array, const std:
 
 struct Context
 {
-    const std::string last_column;
-    const BW::Count count;
-    const std::vector<std::size_t> first_occurences;
-    const BW::PartialSuffixArray partial_suffix_array;
+    //const
+    std::string last_column;
+    //const
+    BW::Count count;
+    //const
+    std::vector<std::size_t> first_occurences;
+    //const
+    BW::PartialSuffixArray partial_suffix_array;
 };
+
+
+static constexpr std::pair<pos_type, pos_type> TOP_BOTTOM_INVALID = {1, 0};
+
+
+std::pair<pos_type, pos_type>
+top_bottom(
+    const char * begin,
+    const char * end,
+    const Context & ctx,
+    std::size_t top,
+    std::size_t bottom)
+{
+    const auto & last_column(ctx.last_column);
+    const auto & count(ctx.count);
+    const auto & first_occurences(ctx.first_occurences);
+
+    auto pattern_ix{std::distance(begin, end)};
+    assert(pattern_ix >= 0);
+
+    while (top <= bottom)
+    {
+        if (pattern_ix != 0)
+        {
+            const auto symbol = begin[-1 + pattern_ix--];
+            if (std::find(last_column.begin() + top, last_column.begin() + bottom + 1, symbol) != last_column.begin() + bottom + 1)
+            {
+                const auto base_ix = ix_by_base(symbol);
+
+                top = first_occurences.at(base_ix) + count.value(base_ix, top, last_column);
+                bottom = first_occurences.at(base_ix) + count.value(base_ix, bottom + 1, last_column) - 1;
+            }
+            else
+            {
+                return TOP_BOTTOM_INVALID;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return {top, bottom};
+}
+
+
+std::pair<pos_type, pos_type>
+top_bottom(
+    const char * begin,
+    const char * end,
+    const Context & ctx)
+{
+    const auto & last_column(ctx.last_column);
+    const auto & count(ctx.count);
+    const auto & first_occurences(ctx.first_occurences);
+
+    std::size_t top{0};
+    std::size_t bottom{last_column.size() - 1};
+
+    auto pattern_ix{std::distance(begin, end)};
+    assert(pattern_ix >= 0);
+
+    while (top <= bottom)
+    {
+        if (pattern_ix != 0)
+        {
+            const auto symbol = begin[-1 + pattern_ix--];
+            if (std::find(last_column.begin() + top, last_column.begin() + bottom + 1, symbol) != last_column.begin() + bottom + 1)
+            {
+                const auto base_ix = ix_by_base(symbol);
+
+                top = first_occurences.at(base_ix) + count.value(base_ix, top, last_column);
+                bottom = first_occurences.at(base_ix) + count.value(base_ix, bottom + 1, last_column) - 1;
+            }
+            else
+            {
+                return TOP_BOTTOM_INVALID;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return {top, bottom};
+}
 
 
 std::vector<pos_type>
@@ -385,8 +481,10 @@ struct CompressedText
         return result;
     }
 
-    const std::size_t m_sz;
-    const std::vector<uint64_t> m_bitset;
+    //const
+    std::size_t m_sz;
+    //const
+    std::vector<uint64_t> m_bitset;
 };
 
 
@@ -467,6 +565,145 @@ approximate_better_match(
     for (auto dset = dset_gen.yield(); dset.second != std::string::npos; dset = dset_gen.yield())
     {
         for (const auto ix : better_match(dset.first, ctx))
+        {
+            const auto begin = ix - dset.second;
+            const auto end = begin + pattern.size();
+            if (begin >= 0 && end <= ctx.last_column.size())
+            {
+                const auto text = comptext.decompress(begin, end);
+                const auto real_dist = std::inner_product(text.cbegin(), text.cend(), pattern.cbegin(),
+                    0u,
+                    [](const std::size_t acc, const std::size_t val){return acc + val;},
+                    [](const char lhs, const char rhs){return lhs != rhs;}
+                );
+                if (real_dist <= dist)
+                {
+                    grand_matched.emplace(begin, real_dist);
+                }
+            }
+        }
+    }
+    // TODO: unordered map
+
+    const std::vector<std::pair<pos_type, std::size_t>> range(grand_matched.cbegin(), grand_matched.cend());
+    return range;
+//    return grand_matched;
+}
+
+
+typedef uint32_t hash_type;
+
+
+hash_type kmer_hash_fwd(const char * what, std::size_t depth)
+{
+    hash_type result{0};
+
+    while (depth--)
+    {
+        result = (result << 2) | BW::ix_by_nucleobase(*what--);
+    }
+
+    return result;
+}
+
+
+std::vector<pos_type>
+cached_better_match(
+    const char * begin,
+    const char * end,
+    const Context & ctx,
+    const std::unordered_map<hash_type, std::pair<BW::pos_type, BW::pos_type>> & cache,
+    std::size_t cache_depth)
+{
+    const auto hash = kmer_hash_fwd(end - 1, cache_depth);
+    if (cache.count(hash) == 0)
+    {
+        return {};
+    }
+
+    const auto & last_column(ctx.last_column);
+    const auto & suffix_array(ctx.partial_suffix_array);
+    const auto & count(ctx.count);
+    const auto & first_occurences(ctx.first_occurences);
+
+    const auto cached_top_bottom = cache.at(hash);
+
+    const auto bw_top_bottom = top_bottom(begin, end - cache_depth, ctx, cached_top_bottom.first, cached_top_bottom.second);
+
+    if (bw_top_bottom == TOP_BOTTOM_INVALID)
+    {
+        return {};
+    }
+
+    std::vector<pos_type> range;
+
+    for (auto ix = bw_top_bottom.first; ix <= bw_top_bottom.second; ++ix)
+    {
+        range.push_back(suffix_array.value(ix, last_column, count, first_occurences));
+    }
+
+    return range;
+}
+
+
+std::vector<std::pair<pos_type, std::size_t>>
+cached_approximate_better_match(
+    const std::string & pattern,
+    const Context & ctx,
+    const CompressedText & comptext,
+    std::size_t dist,
+    const std::unordered_map<hash_type, std::pair<BW::pos_type, BW::pos_type>> & cache,
+    std::size_t cache_depth)
+{
+    struct DsetGen
+    {
+        DsetGen(const std::string & word, const std::size_t dist) :
+            m_word(word)
+        {
+            const auto L = word.size();
+
+            // linspace
+            {
+                const float step = L / (dist + 1.f);
+                m_splits.push_back(0);
+                for (std::size_t ix = 1; ix <= dist; ++ix)
+                {
+                    m_splits.push_back(ix * step);
+                }
+                m_splits.push_back(L);
+            }
+        }
+
+        std::pair<std::string, std::size_t> yield()
+        {
+            if (m_splits.size() >= 2)
+            {
+                const auto back = m_splits.back();
+                m_splits.pop_back();
+
+                return {m_word.substr(m_splits.back(), back - m_splits.back()), m_splits.back()};
+            }
+            else
+            {
+                return {"", std::string::npos};
+            }
+        }
+
+        const std::string & m_word;
+        std::vector<std::size_t> m_splits;
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    std::set<std::pair<pos_type, std::size_t>> grand_matched;
+
+    auto dset_gen = DsetGen(pattern, dist);
+
+    for (auto dset = dset_gen.yield(); dset.second != std::string::npos; dset = dset_gen.yield())
+    {
+        for (const auto ix : cached_better_match(
+            dset.first.c_str(), dset.first.c_str() + dset.first.size(),
+            ctx, cache, cache_depth))
         {
             const auto begin = ix - dset.second;
             const auto end = begin + pattern.size();
