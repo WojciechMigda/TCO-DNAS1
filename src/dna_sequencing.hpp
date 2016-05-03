@@ -44,6 +44,7 @@
 #include <cstddef>
 #include <valarray>
 #include <cmath>
+#include <memory>
 
 
 #include <sys/time.h>
@@ -197,29 +198,179 @@ const auto make_scored_positions = [](
 };
 
 
+std::size_t chromatid_offset(int test_type, int chroma_id)
+{
+    assert(test_type >= 0 && test_type < 3);
+    assert(chroma_id >= 1 && chroma_id <= 24);
+
+    --chroma_id;
+
+    static const std::size_t offsets[][24] =
+    {
+        {
+            // 20
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0,
+        },
+        {
+            // 1, 11, 20
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            248956422u, 0, 0, 0, 0, 0, 0, 0, 0, 248956422u + 135086622u,
+            0, 0, 0, 0,
+        },
+        {
+            0u,
+            248956422u,
+            491149951u,
+            689445510u,
+            879660065u,
+            1061198324u,
+            1232004303u,
+            1391350276u,
+            1536488912u,
+            1674883629u,
+            1808681051u,
+            1943767673u,
+            2077042982u,
+            2191407310u,
+            2298451028u,
+            2400442217u,
+            2490780562u,
+            2574038003u,
+            2654411288u,
+            2713028904u,
+            2777473071u,
+            2824183054u,
+            2875001522u,
+            3031042417u,
+        }
+    };
+
+    return offsets[test_type][chroma_id];
+}
+
+
+std::size_t genome_reserved_space(int const test_type)
+{
+#if 0
+1   248956422
+2   242193529
+3   198295559
+4   190214555
+5   181538259
+6   170805979
+7   159345973
+8   145138636
+9   138394717
+10  133797422
+11  135086622
+12  133275309
+13  114364328
+14  107043718
+15  101991189
+16  90338345
+17  83257441
+18  80373285
+19  58617616
+20  64444167
+21  46709983
+22  50818468
+23  156040895
+24  57227415
+#endif
+    static const std::size_t reserved[] =
+    {
+        1ULL + 64444167,
+        1ULL + 248956422 + 135086622 + 64444167,
+        1ULL +
+        248956422 +
+        242193529 +
+        198295559 +
+        190214555 +
+        181538259 +
+        170805979 +
+        159345973 +
+        145138636 +
+        138394717 +
+        133797422 +
+        135086622 +
+        133275309 +
+        114364328 +
+        107043718 +
+        101991189 +
+        90338345 +
+        83257441 +
+        80373285 +
+        58617616 +
+        64444167 +
+        46709983 +
+        50818468 +
+        156040895 +
+        57227415
+    };
+    constexpr long RESERVED_SZ = sizeof (reserved) / sizeof (reserved[0]);
+
+    const std::size_t retval =
+        (test_type >= 0 && test_type < RESERVED_SZ) ? reserved[test_type] : 0;
+
+    return retval;
+}
+
+
 struct DNASequencing
 {
-    enum { SKIP = 100 };
+    enum { SKIP = 40 };
 
-    void initTest()
-    {
-        m_bw_contexts.clear();
-    }
+    int m_test_type;
 
+    std::string __m_mutable_genome;
+    const std::string & m_genome{__m_mutable_genome};
+
+    BW::Context __m_mutable_bw_context;
+    const BW::Context & m_bw_context{__m_mutable_bw_context};
+
+#ifdef STORE_COMPRESSED_TEXT
+    BW::CompressedText __m_mutable_compressed_text;
+    const BW::CompressedText & m_compressed_text{__m_mutable_compressed_text};
+#endif
+
+
+    // 1.
     int initTest(int testDifficulty)
     {
-        initTest();
+        m_test_type = testDifficulty;
+
+        __m_mutable_genome.resize(genome_reserved_space(m_test_type));
+
         return 0;
     }
 
-    int preProcessing()
-    {
-        return 0;
-    }
+    // 2.
+    int passReferenceGenome(
+        int chromatidSequenceId,
+        const std::vector<std::string> & chromatidSequence);
+
+    // 3.
+    int preProcessing();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //#pragma GCC optimize ( "-O0" )
 
-    int passReferenceGenome(
+    int _passReferenceGenome(
         int chromatidSequenceId,
         const std::vector<std::string> & chromatidSequence)
     {
@@ -273,7 +424,15 @@ struct DNASequencing
 
 //#pragma GCC optimize ( "-O0" )
 
+    // 4.
     std::vector<std::string> getAlignment(
+        int N,
+        double normA,
+        double normS,
+        const std::vector<std::string> & readName,
+        const std::vector<std::string> & readSequence);
+
+    std::vector<std::string> _getAlignment(
         int N,
         double normA,
         double normS,
@@ -287,8 +446,272 @@ struct DNASequencing
 };
 
 
+
+
+
+int
+DNASequencing::passReferenceGenome(
+    int chromatidSequenceId,
+    const std::vector<std::string> & chromatidSequence)
+{
+    std::cerr << "[DNAS1] passReferenceGenome start" << std::endl;
+    const auto time0 = timestamp();
+
+    std::size_t local_offset{0};
+
+    for (const auto & kmer : chromatidSequence)
+    {
+        std::transform(
+            kmer.cbegin(), kmer.cend(),
+            __m_mutable_genome.begin() + chromatid_offset(m_test_type, chromatidSequenceId) + local_offset,
+            [](char const what)
+            {
+                if (what != 'A' && what != 'C' && what != 'G' && what != 'T')
+                {
+                    return 'N';
+                }
+                else
+                {
+                    return what;
+                }
+            });
+
+        local_offset += kmer.size();
+    }
+
+    std::cerr << "[DNAS1] elapsed time (passReferenceGenome) " << timestamp() - time0 << " secs" << std::endl;
+
+    return 0;
+}
+
+
+int DNASequencing::preProcessing()
+{
+    const auto time0 = timestamp();
+
+    __m_mutable_genome.back() = '$';
+
+    std::cerr << "[DNAS1] Combined genome length " << m_genome.size() << std::endl;
+
+#ifdef STORE_COMPRESSED_TEXT
+    __m_mutable_compressed_text = BW::compress_text(m_genome);
+    std::cerr << "[DNAS1] compressed text. Done" << std::endl;
+#endif
+
+    auto full_suffix_array = BW::full_suffix_array(m_genome);
+    std::cerr << "[DNAS1] suffix array. Done" << std::endl;
+    const auto last_col = BW::last_column(m_genome, full_suffix_array);
+    std::cerr << "[DNAS1] last column. Done" << std::endl;
+    __m_mutable_genome.clear();
+    const auto partial_sufarr = BW::partial_suffix_array(full_suffix_array, SKIP);
+    std::cerr << "[DNAS1] partial suffix array. Done" << std::endl;
+    full_suffix_array.clear();
+
+    const auto count = BW::count(last_col, SKIP);
+    const auto first_occ = BW::first_occurences(count, last_col);
+    __m_mutable_bw_context = BW::Context{last_col, count, first_occ, partial_sufarr};
+
+    std::cerr << "[DNAS1] elapsed time (preProcessing) " << timestamp() - time0 << " secs" << std::endl;
+
+    return 0;
+}
+
+
+//
+//
+//hash_type kmer_hash_rev(const char * what, std::size_t depth)
+//{
+//    hash_type result{0};
+//
+//    while (depth--)
+//    {
+//        result = (result << 2) | (BW::ix_by_nucleobase(*what--) ^ 0x3);
+//    }
+//
+//    return result;
+//}
+
+
+std::unordered_map<BW::hash_type, std::pair<BW::pos_type, BW::pos_type>>
+make_strict_cache(
+    const std::size_t DEPTH,
+    const std::vector<std::string> & kmers,
+    const BW::Context & bw_context)
+{
+    enum {STEP = 25};
+
+    std::unordered_map<BW::hash_type, std::pair<BW::pos_type, BW::pos_type>> cache;
+
+    for (const auto & kmer : kmers)
+    {
+        for (int ix = 0; ix < (150 / STEP); ++ix)
+        {
+            const auto hash = BW::kmer_hash_fwd(kmer.c_str() + (ix + 1) * STEP - 1, DEPTH);
+
+            if (cache.count(hash) == 0)
+            {
+                cache[hash] = BW::top_bottom(
+                    kmer.c_str() + (ix + 1) * STEP - DEPTH,
+                    kmer.c_str() + (ix + 1) * STEP,
+                    bw_context);
+            }
+        }
+
+        const std::string remk = reverse_complement(kmer);
+        for (int ix = 0; ix < (150 / STEP); ++ix)
+        {
+            const auto hash = BW::kmer_hash_fwd(remk.c_str() + (ix + 1) * STEP - 1, DEPTH);
+
+            if (cache.count(hash) == 0)
+            {
+                cache[hash] = BW::top_bottom(
+                    remk.c_str() + (ix + 1) * STEP - DEPTH,
+                    remk.c_str() + (ix + 1) * STEP,
+                    bw_context);
+            }
+        }
+    }
+
+    return cache;
+}
+
+
 std::vector<std::string>
 DNASequencing::getAlignment(
+    int N,
+    double normA,
+    double normS,
+    const std::vector<std::string> & readName,
+    const std::vector<std::string> & readSequence)
+{
+    const auto time0 = timestamp();
+
+    std::vector<std::string> ret;
+    ret.reserve(N);
+
+    enum {CACHE_DEPTH = 12};
+
+    const auto strict_cache = make_strict_cache(CACHE_DEPTH, readSequence, m_bw_context);
+
+//    const std::string foo = "TGTTCAATTCTGTGACTTGAATGCAAACATCACAA";
+//    const auto bar = BW::cached_better_match(
+//        foo.c_str(),
+//        foo.c_str() + foo.size(),
+//        m_bw_context,
+//        strict_cache,
+//        CACHE_DEPTH);
+//    const auto fido = BW::better_match(foo, m_bw_context);
+//    assert(0);
+
+    for (std::size_t ix{0}; ix < readName.size(); ix += 2)
+    {
+        if (ix % 10000 == 0)
+        {
+            std::cerr << "[DNAS1] Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
+        }
+
+        const auto & head_name = readName[ix];
+        const auto & tail_name = readName[ix + 1];
+        const auto & head_read_fwd = readSequence[ix];
+        const auto & tail_read_fwd = readSequence[ix + 1];
+        const auto head_read_rev = reverse_complement(head_read_fwd);
+        const auto tail_read_rev = reverse_complement(tail_read_fwd);
+
+        //              <chroma_id, head_pos, tail_pos>
+        // range of distances between true positives: [263,814]
+        // distance = (tail_center - head_center)
+        enum
+        {
+            REAL_MIN_DIST = 263,
+            REAL_MAX_DIST = 814,
+            MIN_DIST = 450 - 300,
+            MAX_DIST = 450 + 300,
+        };
+        std::vector<std::tuple<int, int, std::size_t>> close_pairs;
+
+        enum {DIST = 5};
+        const auto matched_head_fwd = BW::cached_approximate_better_match(
+            head_read_fwd,
+            m_bw_context,
+            m_compressed_text,
+            DIST,
+            strict_cache, CACHE_DEPTH);
+        const auto matched_head_rev = BW::cached_approximate_better_match(
+            head_read_rev,
+            m_bw_context,
+            m_compressed_text,
+            DIST,
+            strict_cache, CACHE_DEPTH);
+        const auto matched_tail_fwd = BW::cached_approximate_better_match(
+            tail_read_fwd,
+            m_bw_context,
+            m_compressed_text,
+            DIST,
+            strict_cache, CACHE_DEPTH);
+        const auto matched_tail_rev = BW::cached_approximate_better_match(
+            tail_read_rev,
+            m_bw_context,
+            m_compressed_text,
+            DIST,
+            strict_cache, CACHE_DEPTH);
+
+
+//        const auto matched_head_fwd = BW::cached_better_match(
+//            head_read_fwd.c_str(),
+//            head_read_fwd.c_str() + head_read_fwd.size(),
+//            m_bw_context, strict_cache, CACHE_DEPTH);
+//        const auto matched_head_rev = BW::cached_better_match(
+//            head_read_rev.c_str(),
+//            head_read_rev.c_str() + head_read_rev.size(),
+//            m_bw_context, strict_cache, CACHE_DEPTH);
+//        const auto matched_tail_fwd = BW::cached_better_match(
+//            tail_read_fwd.c_str(),
+//            tail_read_fwd.c_str() + tail_read_fwd.size(),
+//            m_bw_context, strict_cache, CACHE_DEPTH);
+//        const auto matched_tail_rev = BW::cached_better_match(
+//            tail_read_rev.c_str(),
+//            tail_read_rev.c_str() + tail_read_rev.size(),
+//            m_bw_context, strict_cache, CACHE_DEPTH);
+//
+//
+//        for (const auto h_pos : matched_head_fwd)
+//        {
+//            for (const auto t_pos : matched_tail_rev)
+//            {
+//                const auto dist = t_pos - h_pos;
+//                if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+//                {
+//                    close_pairs.emplace_back(h_pos, t_pos);
+//                }
+//            }
+//        }
+//
+//        for (const auto h_pos : matched_head_rev)
+//        {
+//            for (const auto t_pos : matched_tail_fwd)
+//            {
+//                const auto dist = h_pos - t_pos;
+//                if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+//                {
+//                    close_pairs.emplace_back(-h_pos, -t_pos);
+//                }
+//            }
+//        }
+
+
+    }
+
+    std::cerr << "[DNAS1] elapsed time (getAlignment) " << timestamp() - time0 << " secs" << std::endl;
+
+    assert(0);
+
+    return ret;
+}
+
+
+
+std::vector<std::string>
+DNASequencing::_getAlignment(
     int N,
     double normA,
     double normS,
@@ -544,5 +967,6 @@ DNASequencing::getAlignment(
 
     return ret;
 }
+
 
 #endif /* DNA_SEQUENCING_HPP_ */
