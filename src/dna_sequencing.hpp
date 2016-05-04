@@ -46,6 +46,7 @@
 #include <cmath>
 #include <memory>
 
+#include <stdlib.h>
 
 #include <sys/time.h>
 long int timestamp()
@@ -320,7 +321,7 @@ std::size_t genome_reserved_space(int const test_type)
 
 struct DNASequencing
 {
-    enum { SKIP = 40 };
+    enum { SKIP = 100 };
 
     int m_test_type;
 
@@ -576,6 +577,38 @@ make_strict_cache(
 }
 
 
+int64_t memcmpr(const char * a, const char *b, std::size_t n)
+__attribute__ ((__pure__))
+__attribute__ ((__nonnull__ (1, 2)));
+
+int64_t memcmpr(const char * a, const char * b, std::size_t n)
+{
+    auto tail = n % 8;
+    const auto head = n - tail;
+    while (tail--)
+    {
+        if (a[head + tail] != b[head + tail])
+        {
+            return a[head + tail] - b[head + tail];
+        }
+    }
+
+    const int64_t * a8 = (const int64_t *)a;
+    const int64_t * b8 = (const int64_t *)b;
+    n = n / 8;
+
+    while (n--)
+    {
+        if (a8[n] != b8[n])
+        {
+            return a8[n] - b8[n];
+        }
+    }
+
+    return 0;
+}
+
+
 std::vector<std::string>
 DNASequencing::getAlignment(
     int N,
@@ -586,8 +619,248 @@ DNASequencing::getAlignment(
 {
     const auto time0 = timestamp();
 
-    std::vector<std::string> ret;
-    ret.reserve(N);
+    // create reverse-complements of reads
+    enum {READ_SZ = 150};
+    const std::vector<std::string> & reads_fwd{readSequence};
+    std::vector<std::string> reads_rev;
+
+    reads_rev.reserve(reads_fwd.size());
+    std::transform(reads_fwd.cbegin(), reads_fwd.cend(), std::back_inserter(reads_rev),
+        reverse_complement);
+
+
+    ////////////////////////////////////////////////////////////////////////////
+
+
+    // create kmer views
+    enum {KMER_SZ = 25};
+
+    static_assert((READ_SZ % KMER_SZ) == 0, "KMER_SZ doesn't divide READ_SZ");
+    enum {KMER_PER_READ = READ_SZ / KMER_SZ};
+
+    typedef uint32_t rkix_type;
+    const rkix_type NEG_RKIX_OFFSET = readName.size() * KMER_PER_READ;
+
+    const auto make_rkix = [NEG_RKIX_OFFSET](uint32_t rix, uint8_t kmer_pos, bool is_reverse) -> rkix_type
+    {
+        return (rix * READ_SZ + kmer_pos) / KMER_SZ + (is_reverse ? NEG_RKIX_OFFSET : 0);
+    };
+
+    std::vector<rkix_type> kmer_views;
+
+    // twice (fwd + rev) number of kmers per read
+    kmer_views.reserve(2 * KMER_PER_READ * readName.size());
+
+    for (std::size_t rix = 0; rix < reads_fwd.size(); ++rix)
+    {
+        for (std::size_t kix = 0; kix < READ_SZ; kix += KMER_SZ)
+        {
+            const auto rkix = make_rkix(rix, kix, false);
+            kmer_views.push_back(rkix);
+        }
+    }
+    for (std::size_t rix = 0; rix < reads_rev.size(); ++rix)
+    {
+        for (std::size_t kix = 0; kix < READ_SZ; kix += KMER_SZ)
+        {
+            const auto rkix = make_rkix(rix, kix, true);
+            kmer_views.push_back(rkix);
+        }
+    }
+    std::cerr << "[DNAS1] processing " << kmer_views.size() << " K-mer views" << std::endl;
+    std::cerr << "[DNAS1] reverse-complement kmers, elapsed " << timestamp() - time0 << " secs" << std::endl;
+
+
+    ////////////////////////////////////////////////////////////////////////////
+
+
+    // sort-em
+    struct sort_ctx_type
+    {
+        const std::string * fwd;
+        const std::string * rev;
+        const rkix_type neg_rkix_offset;
+    } sort_ctx {reads_fwd.data(), reads_rev.data(), NEG_RKIX_OFFSET};
+
+    qsort_r(kmer_views.data(), kmer_views.size(), sizeof (kmer_views.front()),
+        [](const void *va, const void * vb, void * vc)
+        {
+            const rkix_type * a = (const rkix_type *)va;
+            const rkix_type * b = (const rkix_type *)vb;
+            const sort_ctx_type * ctx = (const sort_ctx_type *)vc;
+
+            const auto rkix_a = *a >= ctx->neg_rkix_offset ? *a - ctx->neg_rkix_offset : *a;
+            const auto rix_a = (rkix_a * KMER_SZ) / READ_SZ;
+            const auto kix_a = (rkix_a * KMER_SZ) % READ_SZ;
+
+            const char * lhs = *a >= ctx->neg_rkix_offset ?
+                ctx->rev[rix_a].c_str() + kix_a :
+                ctx->fwd[rix_a].c_str() + kix_a;
+
+            const auto rkix_b = *b >= ctx->neg_rkix_offset ? *b - ctx->neg_rkix_offset : *b;
+            const auto rix_b = (rkix_b * KMER_SZ) / READ_SZ;
+            const auto kix_b = (rkix_b * KMER_SZ) % READ_SZ;
+
+            const char * rhs = *b >= ctx->neg_rkix_offset ?
+                ctx->rev[rix_b].c_str() + kix_b :
+                ctx->fwd[rix_b].c_str() + kix_b;
+
+            const auto result = memcmpr(lhs, rhs, KMER_SZ);
+
+            return result > 0 ? 1 : result < 0 ? -1 : 0;
+        }, &sort_ctx);
+
+    std::cerr << "[DNAS1] sorted kmer views, elapsed " << timestamp() - time0 << " secs" << std::endl;
+
+
+    ////////////////////////////////////////////////////////////////////////////
+
+
+    std::vector<std::pair<BW::pos_type, BW::pos_type>> top_bottoms(kmer_views.size(), {0, m_bw_context.last_column.size() - 1});
+
+//kmer_views.resize(6);
+
+    for (std::size_t depth = 0; depth < KMER_SZ; ++depth)
+    {
+        const auto tbix = kmer_views[0];
+        const auto rkix = tbix >= NEG_RKIX_OFFSET ? tbix - NEG_RKIX_OFFSET : tbix;
+        const auto rix = (rkix * KMER_SZ) / READ_SZ;
+        const auto kix = (rkix * KMER_SZ) % READ_SZ;
+
+        const char * kmer_p = tbix >= NEG_RKIX_OFFSET ?
+                reads_rev[rix].c_str() + kix :
+                reads_fwd[rix].c_str() + kix;
+
+        auto prev_symbol = kmer_p[KMER_SZ - depth - 1];
+        auto prev_top_bottom = top_bottoms[tbix];
+
+        top_bottoms[tbix] = BW::top_botom_iter(prev_symbol, m_bw_context, prev_top_bottom.first, prev_top_bottom.second);
+
+        for (std::size_t vix = 1; vix < kmer_views.size(); ++vix)
+        {
+            const auto tbix = kmer_views[vix];
+            const auto rkix = tbix >= NEG_RKIX_OFFSET ? tbix - NEG_RKIX_OFFSET : tbix;
+            const auto rix = (rkix * KMER_SZ) / READ_SZ;
+            const auto kix = (rkix * KMER_SZ) % READ_SZ;
+
+            if (top_bottoms[tbix] == BW::TOP_BOTTOM_INVALID)
+            {
+                continue;
+            }
+
+            const char * kmer_p = tbix >= NEG_RKIX_OFFSET ?
+                    reads_rev[rix].c_str() + kix :
+                    reads_fwd[rix].c_str() + kix;
+
+            const auto symbol = kmer_p[KMER_SZ - depth - 1];
+
+            if (prev_top_bottom == top_bottoms[tbix] && prev_symbol == symbol)
+            {
+                top_bottoms[tbix] = top_bottoms[kmer_views[vix - 1]];
+            }
+            else
+            {
+                prev_top_bottom = top_bottoms[tbix];
+                prev_symbol = symbol;
+
+                top_bottoms[tbix] = BW::top_botom_iter(symbol, m_bw_context, top_bottoms[tbix].first, top_bottoms[tbix].second);
+            }
+        }
+    }
+
+    std::cerr << "[DNAS1] BW on kmers, elapsed " << timestamp() - time0 << " secs" << std::endl;
+
+
+    ////////////////////////////////////////////////////////////////////////////
+
+
+    for (std::size_t ix{0}; ix < readName.size(); ix += 2)
+    {
+        if (ix % 10000 == 0)
+        {
+            std::cerr << "[DNAS1] Doing read pair " << ix / 2 + 1 << " out of " << readName.size() / 2 << std::endl;
+        }
+
+        const auto & head_name = readName[ix];
+        const auto & tail_name = readName[ix + 1];
+        const auto & head_read_fwd = reads_fwd[ix];
+        const auto & tail_read_fwd = reads_fwd[ix + 1];
+        const auto & head_read_rev = reads_rev[ix];
+        const auto & tail_read_rev = reads_rev[ix + 1];
+
+        enum
+        {
+            REAL_MIN_DIST = 263,
+            REAL_MAX_DIST = 814,
+            MIN_DIST = 450 - 300,
+            MAX_DIST = 450 + 300,
+        };
+        std::vector<std::tuple<int, int, std::size_t>> close_pairs;
+
+        ////////////////////////////////////////////////////////////////////////
+//        const auto cached_approximate_bw_match = [&view_ix, &top_bottoms, this](
+//            const std::size_t rix)
+//        {
+//            const auto bw_context = this->m_bw_context;
+//
+//            std::vector<BW::pos_type> positions;
+//
+//            for (std::size_t kix = 0; kix < READ_SZ; kix += KMER_SZ)
+//            {
+////                const auto vix = view_ix(rix, kix);
+//                const auto & top_bottom = top_bottoms.at(rix);
+//
+//                if (top_bottom == BW::TOP_BOTTOM_INVALID)
+//                {
+//                    continue;
+//                }
+//
+//                for (auto lcix = top_bottom.first; lcix <= top_bottom.second; ++lcix)
+//                {
+//                    const auto position = bw_context.partial_suffix_array.value(
+//                        lcix,
+//                        bw_context.last_column,
+//                        bw_context.count,
+//                        bw_context.first_occurences);
+//
+//                    positions.push_back(position - kix);
+//                }
+//
+//                return positions;
+//            }
+//        };
+//        ////////////////////////////////////////////////////////////////////////
+//
+//        const auto foo = cached_approximate_bw_match(ix);
+    }
+
+
+    assert(0);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     enum {CACHE_DEPTH = 12};
 
@@ -704,6 +977,9 @@ DNASequencing::getAlignment(
     std::cerr << "[DNAS1] elapsed time (getAlignment) " << timestamp() - time0 << " secs" << std::endl;
 
     assert(0);
+
+    std::vector<std::string> ret;
+    ret.reserve(N);
 
     return ret;
 }
