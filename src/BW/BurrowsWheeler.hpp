@@ -320,6 +320,35 @@ struct Context
 static constexpr std::pair<pos_type, pos_type> TOP_BOTTOM_INVALID = {1, 0};
 
 
+inline
+std::pair<pos_type, pos_type>
+top_botom_iter(
+    const char symbol,
+    const Context & ctx,
+    const std::size_t top,
+    const std::size_t bottom)
+{
+    const auto & last_column(ctx.last_column);
+    const auto & count(ctx.count);
+    const auto & first_occurences(ctx.first_occurences);
+
+    // TODO memchr
+    if (std::find(last_column.begin() + top, last_column.begin() + bottom + 1, symbol) != last_column.begin() + bottom + 1)
+    {
+        const auto base_ix = ix_by_base(symbol);
+
+        const auto newtop = first_occurences.at(base_ix) + count.value(base_ix, top, last_column);
+        const auto newbottom = first_occurences.at(base_ix) + count.value(base_ix, bottom + 1, last_column) - 1;
+
+        return {newtop, newbottom};
+    }
+    else
+    {
+        return TOP_BOTTOM_INVALID;
+    }
+}
+
+
 std::pair<pos_type, pos_type>
 top_bottom(
     const char * begin,
