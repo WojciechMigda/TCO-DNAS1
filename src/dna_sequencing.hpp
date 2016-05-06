@@ -21,6 +21,7 @@
  *
  ******************************************************************************/
 
+//#pragma GCC optimize ( "-O3" )
 
 #ifndef DNA_SEQUENCING_HPP_
 #define DNA_SEQUENCING_HPP_
@@ -40,6 +41,7 @@
 #include <cassert>
 #include <cstdint>
 #include <utility>
+#include <unordered_set>
 #include <unordered_map>
 #include <cstddef>
 #include <valarray>
@@ -113,29 +115,77 @@ double score_close_pairs(const std::vector<std::tuple<chrid_type, int, int, std:
 }
 
 
-std::size_t LevenshteinDistance(const std::string& s1, const std::string& s2)
+std::size_t LevenshteinDistance(const std::string& s1, const std::string& s2, const std::size_t max_dist = 150)
 {
-    std::size_t dp[s1.length() + 1][s2.length() + 1];
+//    std::size_t dp[s1.length() + 1][s2.length() + 1];
+//
+//    for (std::size_t i = 0; i <= s1.length(); i++)
+//    {
+//        dp[i][0] = i;
+//    }
+//    for (std::size_t i = 0; i <= s2.length(); i++)
+//    {
+//        dp[0][i] = i;
+//    }
+//    for (std::size_t i = 1; i <= s1.length(); i++)
+//    {
+//        for (std::size_t j = 1; j <= s2.length(); j++)
+//        {
+//            dp[i][j] = std::min(dp[i - 1][j] + 1, dp[i][j - 1] + 1);
+//            dp[i][j] = std::min(dp[i][j],
+//                dp[i - 1][j - 1] + (s1[i - 1] == s2[j - 1] ? 0 : 1));
+//        }
+//    }
+//    return dp[s1.length()][s2.length()];
 
-    for (std::size_t i = 0; i <= s1.length(); i++)
+    typedef std::size_t size_type;
+
+    const char * str1 = s1.c_str();
+    const size_type SZ1 = s1.size();
+    const char * str2 = s2.c_str();
+    const size_type SZ2 = s2.size();
+
+
+    typedef std::uint8_t dist_type;
+
+    dist_type dist1[std::max(SZ1, SZ2) + 1];
+    dist_type dist2[std::max(SZ1, SZ2) + 1];
+
+    dist_type * v0{dist1};
+    dist_type * v1{dist2};
+
+    std::iota(v0, v0 + sizeof (dist1) / sizeof (dist1[0]), 0);
+
+    for (size_type P{0}; P < SZ1; ++P)
     {
-        dp[i][0] = i;
-    }
-    for (std::size_t i = 0; i <= s2.length(); i++)
-    {
-        dp[0][i] = i;
-    }
-    for (std::size_t i = 1; i <= s1.length(); i++)
-    {
-        for (std::size_t j = 1; j <= s2.length(); j++)
+        v1[0] = P + 1;
+        v1[1] = P + 2;
+
+        dist_type mid_dist = max_dist;
+
+        for (size_type Q{0}; Q < SZ2; ++Q)
         {
-            dp[i][j] = std::min(dp[i - 1][j] + 1, dp[i][j - 1] + 1);
-            dp[i][j] = std::min(dp[i][j],
-                dp[i - 1][j - 1] + (s1[i - 1] == s2[j - 1] ? 0 : 1));
+            const dist_type DIAG_SCORE = v0[Q] + (str1[P] != str2[Q]);
+
+            const dist_type UP_DOWN_SCORE = std::min(v1[Q] + 1, v0[Q + 1] + 1);
+
+            v1[Q + 1] = std::min(UP_DOWN_SCORE, DIAG_SCORE);
+            mid_dist = std::min(v1[Q + 1], mid_dist);
+        }
+
+        std::swap(v0, v1);
+
+        if (mid_dist > max_dist)
+        {
+            return max_dist + 1;
         }
     }
-    return dp[s1.length()][s2.length()];
+
+    const size_type result = v0[SZ2];
+
+    return result;
 }
+
 
 std::size_t best_index_matched_by_edit_distance(
     const std::vector<std::pair<chrid_type, BW::pos_type>> & matches,
@@ -252,6 +302,75 @@ std::size_t chromatid_offset(int test_type, int chroma_id)
 }
 
 
+std::pair<int, std::size_t> chroma_id_by_offset(std::size_t offset, int test_type)
+{
+    static const std::size_t offsets[][1 + 24] =
+    {
+        {
+            0,
+            // 20
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 64444167u,
+            64444167u, 64444167u, 64444167u, 64444167u,
+        },
+        {
+            0,
+            // 1, 11, 20
+            248956422u, 248956422u, 248956422u, 248956422u, 248956422u,
+            248956422u, 248956422u, 248956422u, 248956422u, 248956422u,
+
+            248956422u + 135086622u, 248956422u + 135086622u,
+            248956422u + 135086622u, 248956422u + 135086622u,
+            248956422u + 135086622u,
+            248956422u + 135086622u, 248956422u + 135086622u,
+            248956422u + 135086622u, 248956422u + 135086622u,
+            248956422u + 135086622u + 64444167u,
+            248956422u + 135086622u + 64444167u, 248956422u + 135086622u + 64444167u,
+            248956422u + 135086622u + 64444167u, 248956422u + 135086622u + 64444167u,
+        },
+        {
+            0,
+            248956422u,
+            491149951u,
+            689445510u,
+            879660065u,
+            1061198324u,
+            1232004303u,
+            1391350276u,
+            1536488912u,
+            1674883629u,
+            1808681051u,
+            1943767673u,
+            2077042982u,
+            2191407310u,
+            2298451028u,
+            2400442217u,
+            2490780562u,
+            2574038003u,
+            2654411288u,
+            2713028904u,
+            2777473071u,
+            2824183054u,
+            2875001522u,
+            3031042417u,
+            3031042417u + 57227415u
+        }
+    };
+
+    const auto & arr = offsets[test_type];
+
+    for (std::size_t ix = 1; ix <= 24; ++ix)
+    {
+        if (offset <= arr[ix])
+        {
+            return {ix, arr[ix - 1]};
+        }
+    }
+
+    return {24, 3031042417u};
+}
+
+
 std::size_t genome_reserved_space(int const test_type)
 {
 #if 0
@@ -321,7 +440,7 @@ std::size_t genome_reserved_space(int const test_type)
 
 struct DNASequencing
 {
-    enum { SKIP = 100 };
+    enum { SKIP = 32 };
 
     int m_test_type;
 
@@ -609,6 +728,8 @@ int64_t memcmpr(const char * a, const char * b, std::size_t n)
 }
 
 
+//#pragma GCC optimize ( "-O0" )
+
 std::vector<std::string>
 DNASequencing::getAlignment(
     int N,
@@ -633,7 +754,7 @@ DNASequencing::getAlignment(
 
 
     // create kmer views
-    enum {KMER_SZ = 25};
+    enum {KMER_SZ = 50};
 
     static_assert((READ_SZ % KMER_SZ) == 0, "KMER_SZ doesn't divide READ_SZ");
     enum {KMER_PER_READ = READ_SZ / KMER_SZ};
@@ -774,6 +895,9 @@ DNASequencing::getAlignment(
     ////////////////////////////////////////////////////////////////////////////
 
 
+    std::vector<std::string> ret;
+    ret.reserve(N);
+
     for (std::size_t ix{0}; ix < readName.size(); ix += 2)
     {
         if (ix % 10000 == 0)
@@ -795,47 +919,203 @@ DNASequencing::getAlignment(
             MIN_DIST = 450 - 300,
             MAX_DIST = 450 + 300,
         };
-        std::vector<std::tuple<int, int, std::size_t>> close_pairs;
+        std::vector<std::tuple<int32_t, int32_t, std::size_t>> close_pairs; // pos, pos, distance
 
         ////////////////////////////////////////////////////////////////////////
-//        const auto cached_approximate_bw_match = [&view_ix, &top_bottoms, this](
-//            const std::size_t rix)
-//        {
-//            const auto bw_context = this->m_bw_context;
-//
-//            std::vector<BW::pos_type> positions;
-//
-//            for (std::size_t kix = 0; kix < READ_SZ; kix += KMER_SZ)
-//            {
-////                const auto vix = view_ix(rix, kix);
-//                const auto & top_bottom = top_bottoms.at(rix);
-//
-//                if (top_bottom == BW::TOP_BOTTOM_INVALID)
-//                {
-//                    continue;
-//                }
-//
-//                for (auto lcix = top_bottom.first; lcix <= top_bottom.second; ++lcix)
-//                {
-//                    const auto position = bw_context.partial_suffix_array.value(
-//                        lcix,
-//                        bw_context.last_column,
-//                        bw_context.count,
-//                        bw_context.first_occurences);
-//
-//                    positions.push_back(position - kix);
-//                }
-//
-//                return positions;
-//            }
-//        };
-//        ////////////////////////////////////////////////////////////////////////
-//
-//        const auto foo = cached_approximate_bw_match(ix);
+
+
+        const auto cached_approximate_bw_match = [&top_bottoms, this, &make_rkix](
+            const std::size_t rix, bool is_reverse)
+        {
+            const auto & bw_context = this->m_bw_context;
+
+            std::unordered_set<BW::pos_type> positions;
+
+            for (std::size_t kix = 0; kix < READ_SZ; kix += KMER_SZ)
+            {
+                const auto rkix = make_rkix(rix, kix, is_reverse);
+                const auto & top_bottom = top_bottoms.at(rkix);
+
+                if (top_bottom == BW::TOP_BOTTOM_INVALID)
+                {
+                    continue;
+                }
+
+                for (auto lcix = top_bottom.first; lcix <= top_bottom.second; ++lcix)
+                {
+                    const auto position = bw_context.partial_suffix_array.value(
+                        lcix,
+                        bw_context.last_column,
+                        bw_context.count,
+                        bw_context.first_occurences);
+
+                    positions.emplace(position - kix);
+                }
+            }
+
+            return positions;
+            //return std::vector<BW::pos_type>(positions.cbegin(), positions.cend());
+        };
+        ////////////////////////////////////////////////////////////////////////
+
+        const auto matched_head_fwd = cached_approximate_bw_match(ix, false);
+        const auto matched_tail_fwd = cached_approximate_bw_match(ix + 1, false);
+        const auto matched_head_rev = cached_approximate_bw_match(ix, true);
+        const auto matched_tail_rev = cached_approximate_bw_match(ix + 1, true);
+
+//        std::size_t min_dist = 1000;
+        for (const auto h_pos : matched_head_fwd)
+        {
+            for (const auto t_pos : matched_tail_rev)
+            {
+                const auto dist = t_pos - h_pos;
+                if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+                {
+//                    const auto h_text = m_compressed_text.decompress(h_pos, h_pos + READ_SZ);
+//                    const auto h_dist = LevenshteinDistance(h_text, head_read_fwd, min_dist);
+                    const auto h_dist = 0;
+//                    const auto h_dist = std::inner_product(h_text.cbegin(), h_text.cend(), head_read_fwd.cbegin(),
+//                        0u,
+//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
+//                        [](const char lhs, const char rhs){return lhs != rhs;}
+//                    );
+
+//                    const auto t_text = m_compressed_text.decompress(t_pos, t_pos + READ_SZ);
+//                    const auto t_dist = LevenshteinDistance(t_text, tail_read_rev, min_dist);
+                    const auto t_dist = 0;
+//                    const auto t_dist = std::inner_product(t_text.cbegin(), t_text.cend(), tail_read_rev.cbegin(),
+//                        0u,
+//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
+//                        [](const char lhs, const char rhs){return lhs != rhs;}
+//                    );
+
+                    close_pairs.emplace_back(h_pos, t_pos, h_dist + t_dist);
+//                    min_dist = std::min(min_dist, h_dist + t_dist);
+                }
+            }
+        }
+
+//        min_dist = 1000;
+        for (const auto h_pos : matched_head_rev)
+        {
+            for (const auto t_pos : matched_tail_fwd)
+            {
+                const auto dist = h_pos - t_pos;
+                if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
+                {
+//                    const auto h_text = m_compressed_text.decompress(h_pos, h_pos + READ_SZ);
+//                    const auto h_dist = LevenshteinDistance(h_text, head_read_rev, min_dist);
+                    const auto h_dist = 0;
+//                    const auto h_dist = std::inner_product(h_text.cbegin(), h_text.cend(), head_read_rev.cbegin(),
+//                        0u,
+//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
+//                        [](const char lhs, const char rhs){return lhs != rhs;}
+//                    );
+
+//                    const auto t_text = m_compressed_text.decompress(t_pos, t_pos + READ_SZ);
+//                    const auto t_dist = LevenshteinDistance(t_text, tail_read_fwd, min_dist);
+                    const auto t_dist = 0;
+//                    const auto t_dist = std::inner_product(t_text.cbegin(), t_text.cend(), tail_read_fwd.cbegin(),
+//                        0u,
+//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
+//                        [](const char lhs, const char rhs){return lhs != rhs;}
+//                    );
+
+                    close_pairs.emplace_back(-h_pos, -t_pos, h_dist + t_dist);
+//                    min_dist = std::min(min_dist, h_dist + t_dist);
+                }
+            }
+        }
+
+
+        if (close_pairs.size() > 1 && close_pairs.size() <= 10)
+        {
+            for (auto & pair : close_pairs)
+            {
+                const auto h_pos = std::get<0>(pair);
+                const auto t_pos = std::get<1>(pair);
+                if (h_pos > 0)
+                {
+                    const auto h_text = m_compressed_text.decompress(h_pos, h_pos + READ_SZ);
+                    const auto h_dist = LevenshteinDistance(h_text, head_read_fwd);
+
+                    const auto t_text = m_compressed_text.decompress(t_pos, t_pos + READ_SZ);
+                    const auto t_dist = LevenshteinDistance(t_text, tail_read_rev);
+
+                    std::get<2>(pair) = h_dist + t_dist;
+                }
+                else
+                {
+                    const auto h_text = m_compressed_text.decompress(-h_pos, -h_pos + READ_SZ);
+                    const auto h_dist = LevenshteinDistance(h_text, head_read_rev);
+
+                    const auto t_text = m_compressed_text.decompress(-t_pos, -t_pos + READ_SZ);
+                    const auto t_dist = LevenshteinDistance(t_text, tail_read_fwd);
+
+                    std::get<2>(pair) = h_dist + t_dist;
+                }
+            }
+        }
+
+        ////////////////////////////////////////////////////////////////////////
+
+
+        std::string head_res;
+        std::string tail_res;
+
+        if (close_pairs.size() != 0)
+        {
+            std::sort(close_pairs.begin(), close_pairs.end(),
+                [](const std::tuple<int32_t, int32_t, std::size_t> & lhs,
+                   const std::tuple<int32_t, int32_t, std::size_t> & rhs)
+                {
+                    const auto ldelta = std::abs(std::get<0>(lhs) - std::get<1>(lhs));
+                    const auto rdelta = std::abs(std::get<0>(rhs) - std::get<1>(rhs));
+                    const auto ldist = std::get<2>(lhs);
+                    const auto rdist = std::get<2>(rhs);
+
+                    if (ldist != rdist)
+                    {
+                        return ldist < rdist;
+                    }
+                    else
+                    {
+                        return std::abs(ldelta - 450) < std::abs(rdelta - 450);
+                    }
+                });
+
+            const auto & best = close_pairs.front();
+            const auto score = std::to_string(1. / close_pairs.size());
+
+            const auto chroma_id_shift = chroma_id_by_offset(std::abs(std::get<0>(best)), m_test_type);
+            const auto chroma_id = chroma_id_shift.first;
+            const auto shift = chroma_id_shift.second;
+
+            head_res = head_name + ',' + std::to_string(chroma_id) + ',' +
+                std::to_string(std::abs(std::get<0>(best)) + 1) + ',' +
+                std::to_string(std::abs(std::get<0>(best)) + 150) + ',' +
+                (std::get<0>(best) > 0 ? '+' : '-') + ',' + score;
+
+            tail_res = tail_name + ',' + std::to_string(chroma_id) + ',' +
+                std::to_string(std::abs(std::get<1>(best)) + 1) + ',' +
+                std::to_string(std::abs(std::get<1>(best)) + 150) + ',' +
+                (std::get<1>(best) > 0 ? '-' : '+') + ',' + score;
+        }
+        else
+        {
+            head_res = head_name + ",20,1,150,+,0.00";
+            tail_res = tail_name + ",20,450,600,-,0.00";
+        }
+
+        ret.push_back(head_res);
+        ret.push_back(tail_res);
     }
 
 
-    assert(0);
+    std::cerr << "[DNAS1] elapsed time (getAlignment) " << timestamp() - time0 << " secs" << std::endl;
+
+    return ret;
+
 
 
 
@@ -978,8 +1258,6 @@ DNASequencing::getAlignment(
 
     assert(0);
 
-    std::vector<std::string> ret;
-    ret.reserve(N);
 
     return ret;
 }
