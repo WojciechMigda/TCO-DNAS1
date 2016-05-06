@@ -37,6 +37,55 @@
 #include <cstdint>
 #include <cassert>
 #include <set>
+#include <cstring>
+
+
+#include  <nmmintrin.h>
+#include  <emmintrin.h>
+
+inline
+std::size_t countchr(const uint8_t * vector, const uint8_t searchedByte, const std::size_t sz, std::size_t acc)
+{
+    // Exploiting SIMD instructions in current
+    // processors to improve classical string algorithms
+    // Susana Ladra, Oscar Pedreira, Jose Duato, Nieves R. Brisaboa
+    //
+    // https://pdfs.semanticscholar.org/33ce/f73b98e8a577ad711b33876b581f35bb2339.pdf
+    // page 7
+
+
+    constexpr int mode = _SIDD_UBYTE_OPS | _SIDD_CMP_EQUAL_EACH | _SIDD_BIT_MASK;
+
+    __m128i  patt, window, returnValue;
+    uint8_t patt_code[16];
+    const auto d = sz / 16;
+    const auto r = sz % 16;
+
+    for (auto ix = 0u; ix < 16; ++ix)
+    {
+        patt_code[ix] = searchedByte;
+    }
+
+    const uint64_t * pat_array = (const uint64_t *)patt_code;
+
+    patt = _mm_set_epi64x(pat_array[1], pat_array[0]);
+
+    const uint64_t * text_array = (const uint64_t *)vector;
+
+    for (auto ix = 0u; ix < d; ++ix)
+    {
+        window = _mm_set_epi64x(text_array[1], text_array[0]);
+        returnValue = _mm_cmpestrm(patt, 16, window, 16, mode);
+        acc += _mm_popcnt_u32(_mm_extract_epi32(returnValue, 0));
+        text_array += 2;
+    }
+
+    window = _mm_set_epi64x(text_array[1], text_array[0]);
+    returnValue = _mm_cmpestrm(patt, r, window, r, mode);
+    acc += _mm_popcnt_u32(_mm_extract_epi32(returnValue, 0)) + r - 16;
+
+    return acc;
+}
 
 
 namespace BW
@@ -188,23 +237,32 @@ struct Count
 
         const auto base = base_by_ix(base_ix);
 
-        const auto real_count =
-            std::accumulate(
-                std::next(last_column.cbegin(), mod_pos),
-                std::next(last_column.cbegin(), position),
-                mod_count,
-                [&base](count_type acc, typename SeqT::value_type item)
-                {
-                    return acc + (item == base);
-                }
-            );
+        const auto accumulate = [](const uint8_t * begin, const uint8_t * end, const uint8_t symbol, std::size_t acc)
+        {
+            const auto foo = countchr(begin, symbol, end - begin, acc);
+            return foo;
+
+//            for (; begin != end; ++begin)
+//            {
+//                const uint8_t b = (*begin == symbol);
+//                acc += b;
+//            }
+//
+//            return acc;
+        };
+        const auto real_count = accumulate(
+            (const uint8_t *)(last_column.data() + mod_pos),
+            (const uint8_t *)(last_column.data() + position),
+            base,
+            mod_count);
 
         return real_count;
     }
 };
 
 
-template <typename SeqT>
+// TODO template it
+template <typename SeqT/*, std::size_t SKIP = 4*/>
 Count count(const SeqT & last_column, const std::size_t SKIP = 4)
 {
     std::vector<std::vector<count_type>> result(6);
@@ -261,7 +319,7 @@ struct PartialSuffixArray
     //const
     std::unordered_map<pos_type, pos_type> m_sufarr;
 
-    template <typename SeqT>
+    template <typename SeqT> inline
     pos_type value(
         pos_type ix,
         const SeqT & last_column,
@@ -272,7 +330,8 @@ struct PartialSuffixArray
 
         std::size_t backtrack{0};
 
-        while (m_sufarr.count(ix) == 0)
+        //while (m_sufarr.count(ix) == 0)
+        while (ix % m_skip)
         {
             assert(ix < last_column.size());
             const auto pred_base = last_column[ix];
@@ -295,6 +354,8 @@ partial_suffix_array(const std::vector<pos_type> & full_suffix_array, const std:
     }
 
     std::unordered_map<pos_type, pos_type> partial;
+    partial.reserve(full_suffix_array.size() / SKIP + 1);
+
     for (std::size_t ix{0}; ix < full_suffix_array.size(); ix += SKIP)
     {
         partial[ix] = full_suffix_array[ix];
@@ -334,6 +395,7 @@ top_botom_iter(
 
     // TODO memchr
     if (std::find(last_column.begin() + top, last_column.begin() + bottom + 1, symbol) != last_column.begin() + bottom + 1)
+//    if (memchr(last_column.data() + top, symbol, bottom - top + 1) != NULL)
     {
         const auto base_ix = ix_by_base(symbol);
 
