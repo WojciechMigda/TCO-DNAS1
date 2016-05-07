@@ -72,44 +72,7 @@ std::string reverse_complement(const std::string & seq)
 }
 
 
-double norm_pdf(double x, double mu, double sigma)
-{
-    const double arg = (x - mu) / sigma;
-    return std::exp(- arg * arg / 2) / (sigma * std::sqrt(2. * M_PI));
-}
-
 typedef int chrid_type;
-
-double score_close_pairs(const std::vector<std::tuple<chrid_type, int, int>> & close_pairs)
-{
-    std::valarray<double> probs(close_pairs.size());
-
-    std::transform(close_pairs.cbegin(), close_pairs.cend(), std::begin(probs),
-        [](const std::tuple<int, int, int> & rpair)
-        {
-            const auto prob = norm_pdf(std::abs(std::get<1>(rpair) - std::get<2>(rpair)), 450., 34.);
-            return prob;
-        });
-
-    return probs[0] / probs.sum();
-}
-
-
-double score_close_pairs(const std::vector<std::tuple<chrid_type, int, int, std::size_t>> & close_pairs)
-{
-    // TODO: score is irrespective of cummulative distance (std::get<3>)
-    std::valarray<double> probs(close_pairs.size());
-
-    std::transform(close_pairs.cbegin(), close_pairs.cend(), std::begin(probs),
-        [](const std::tuple<int, int, int, std::size_t> & rpair)
-        {
-            const auto prob = norm_pdf(std::abs(std::get<1>(rpair) - std::get<2>(rpair)), 450., 34.);
-            return prob;
-        });
-
-    return probs[0] / probs.sum();
-}
-
 
 std::size_t LevenshteinDistance(const std::string& s1, const std::string& s2, const std::size_t max_dist = 150)
 {
@@ -470,65 +433,6 @@ int DNASequencing::preProcessing()
 }
 
 
-//
-//
-//hash_type kmer_hash_rev(const char * what, std::size_t depth)
-//{
-//    hash_type result{0};
-//
-//    while (depth--)
-//    {
-//        result = (result << 2) | (BW::ix_by_nucleobase(*what--) ^ 0x3);
-//    }
-//
-//    return result;
-//}
-
-
-//std::unordered_map<BW::hash_type, std::pair<BW::pos_type, BW::pos_type>>
-//make_strict_cache(
-//    const std::size_t DEPTH,
-//    const std::vector<std::string> & kmers,
-//    const BW::Context & bw_context)
-//{
-//    enum {STEP = 25};
-//
-//    std::unordered_map<BW::hash_type, std::pair<BW::pos_type, BW::pos_type>> cache;
-//
-//    for (const auto & kmer : kmers)
-//    {
-//        for (int ix = 0; ix < (150 / STEP); ++ix)
-//        {
-//            const auto hash = BW::kmer_hash_fwd(kmer.c_str() + (ix + 1) * STEP - 1, DEPTH);
-//
-//            if (cache.count(hash) == 0)
-//            {
-//                cache[hash] = BW::top_bottom(
-//                    kmer.c_str() + (ix + 1) * STEP - DEPTH,
-//                    kmer.c_str() + (ix + 1) * STEP,
-//                    bw_context);
-//            }
-//        }
-//
-//        const std::string remk = reverse_complement(kmer);
-//        for (int ix = 0; ix < (150 / STEP); ++ix)
-//        {
-//            const auto hash = BW::kmer_hash_fwd(remk.c_str() + (ix + 1) * STEP - 1, DEPTH);
-//
-//            if (cache.count(hash) == 0)
-//            {
-//                cache[hash] = BW::top_bottom(
-//                    remk.c_str() + (ix + 1) * STEP - DEPTH,
-//                    remk.c_str() + (ix + 1) * STEP,
-//                    bw_context);
-//            }
-//        }
-//    }
-//
-//    return cache;
-//}
-
-
 int64_t memcmpr(const char * a, const char *b, std::size_t n)
 __attribute__ ((__pure__))
 __attribute__ ((__nonnull__ (1, 2)));
@@ -560,8 +464,6 @@ int64_t memcmpr(const char * a, const char * b, std::size_t n)
     return 0;
 }
 
-
-//#pragma GCC optimize ( "-O0" )
 
 std::vector<std::string>
 DNASequencing::getAlignment(
@@ -672,7 +574,6 @@ DNASequencing::getAlignment(
 
     std::vector<std::pair<BW::pos_type, BW::pos_type>> top_bottoms(kmer_views.size(), {0, m_bw_context.last_column.size() - 1});
 
-//kmer_views.resize(6);
 
     for (std::size_t depth = 0; depth < KMER_SZ; ++depth)
     {
@@ -796,7 +697,6 @@ DNASequencing::getAlignment(
         const auto matched_head_rev = cached_approximate_bw_match(ix, true);
         const auto matched_tail_rev = cached_approximate_bw_match(ix + 1, true);
 
-//        std::size_t min_dist = 1000;
         for (const auto h_pos : matched_head_fwd)
         {
             for (const auto t_pos : matched_tail_rev)
@@ -804,31 +704,12 @@ DNASequencing::getAlignment(
                 const auto dist = t_pos - h_pos;
                 if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
                 {
-//                    const auto h_text = m_compressed_text.decompress(h_pos, h_pos + READ_SZ);
-//                    const auto h_dist = LevenshteinDistance(h_text, head_read_fwd, min_dist);
-                    const auto h_dist = 0;
-//                    const auto h_dist = std::inner_product(h_text.cbegin(), h_text.cend(), head_read_fwd.cbegin(),
-//                        0u,
-//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
-//                        [](const char lhs, const char rhs){return lhs != rhs;}
-//                    );
 
-//                    const auto t_text = m_compressed_text.decompress(t_pos, t_pos + READ_SZ);
-//                    const auto t_dist = LevenshteinDistance(t_text, tail_read_rev, min_dist);
-                    const auto t_dist = 0;
-//                    const auto t_dist = std::inner_product(t_text.cbegin(), t_text.cend(), tail_read_rev.cbegin(),
-//                        0u,
-//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
-//                        [](const char lhs, const char rhs){return lhs != rhs;}
-//                    );
-
-                    close_pairs.emplace_back(h_pos, t_pos, h_dist + t_dist);
-//                    min_dist = std::min(min_dist, h_dist + t_dist);
+                    close_pairs.emplace_back(h_pos, t_pos, 0);
                 }
             }
         }
 
-//        min_dist = 1000;
         for (const auto h_pos : matched_head_rev)
         {
             for (const auto t_pos : matched_tail_fwd)
@@ -836,26 +717,7 @@ DNASequencing::getAlignment(
                 const auto dist = h_pos - t_pos;
                 if (dist >= MIN_DIST && dist <= REAL_MAX_DIST)
                 {
-//                    const auto h_text = m_compressed_text.decompress(h_pos, h_pos + READ_SZ);
-//                    const auto h_dist = LevenshteinDistance(h_text, head_read_rev, min_dist);
-                    const auto h_dist = 0;
-//                    const auto h_dist = std::inner_product(h_text.cbegin(), h_text.cend(), head_read_rev.cbegin(),
-//                        0u,
-//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
-//                        [](const char lhs, const char rhs){return lhs != rhs;}
-//                    );
-
-//                    const auto t_text = m_compressed_text.decompress(t_pos, t_pos + READ_SZ);
-//                    const auto t_dist = LevenshteinDistance(t_text, tail_read_fwd, min_dist);
-                    const auto t_dist = 0;
-//                    const auto t_dist = std::inner_product(t_text.cbegin(), t_text.cend(), tail_read_fwd.cbegin(),
-//                        0u,
-//                        [](const std::size_t acc, const std::size_t val){return acc + val;},
-//                        [](const char lhs, const char rhs){return lhs != rhs;}
-//                    );
-
-                    close_pairs.emplace_back(-h_pos, -t_pos, h_dist + t_dist);
-//                    min_dist = std::min(min_dist, h_dist + t_dist);
+                    close_pairs.emplace_back(-h_pos, -t_pos, 0);
                 }
             }
         }
