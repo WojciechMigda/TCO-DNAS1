@@ -40,8 +40,13 @@
 #include <cstring>
 
 
-#include  <nmmintrin.h>
-#include  <emmintrin.h>
+#define _mm_cmpestrm(X, LX, Y, LY, M)                   \
+  ((__m128i) __builtin_ia32_pcmpestrm128 ((__v16qi)(__m128i)(X),    \
+                      (int)(LX), (__v16qi)(__m128i)(Y), \
+                      (int)(LY), (int)(M)))
+
+#define _mm_extract_epi32(X, N) \
+  ((int) __builtin_ia32_vec_ext_v4si ((__v4si)(__m128i)(X), (int)(N)))
 
 inline
 std::size_t countchr(const uint8_t * vector, const uint8_t searchedByte, const std::size_t sz, std::size_t acc)
@@ -54,7 +59,8 @@ std::size_t countchr(const uint8_t * vector, const uint8_t searchedByte, const s
     // page 7
 
 
-    constexpr int mode = _SIDD_UBYTE_OPS | _SIDD_CMP_EQUAL_EACH | _SIDD_BIT_MASK;
+    //constexpr int mode = _SIDD_UBYTE_OPS | _SIDD_CMP_EQUAL_EACH | _SIDD_BIT_MASK;
+    constexpr int mode = 0x00 | 0x08 | 0x00;
 
     __m128i  patt, window, returnValue;
     uint8_t patt_code[16];
@@ -76,16 +82,17 @@ std::size_t countchr(const uint8_t * vector, const uint8_t searchedByte, const s
     {
         window = _mm_set_epi64x(text_array[1], text_array[0]);
         returnValue = _mm_cmpestrm(patt, 16, window, 16, mode);
-        acc += _mm_popcnt_u32(_mm_extract_epi32(returnValue, 0));
+        acc += __builtin_popcount(_mm_extract_epi32(returnValue, 0));
         text_array += 2;
     }
 
     window = _mm_set_epi64x(text_array[1], text_array[0]);
     returnValue = _mm_cmpestrm(patt, r, window, r, mode);
-    acc += _mm_popcnt_u32(_mm_extract_epi32(returnValue, 0)) + r - 16;
+    acc += __builtin_popcount(_mm_extract_epi32(returnValue, 0)) + r - 16;
 
     return acc;
 }
+
 
 
 namespace BW
@@ -423,7 +430,7 @@ top_bottom(
     const auto & count(ctx.count);
     const auto & first_occurences(ctx.first_occurences);
 
-    auto pattern_ix{std::distance(begin, end)};
+    auto pattern_ix(std::distance(begin, end));
     assert(pattern_ix >= 0);
 
     while (top <= bottom)
@@ -466,7 +473,7 @@ top_bottom(
     std::size_t top{0};
     std::size_t bottom{last_column.size() - 1};
 
-    auto pattern_ix{std::distance(begin, end)};
+    auto pattern_ix(std::distance(begin, end));
     assert(pattern_ix >= 0);
 
     while (top <= bottom)
